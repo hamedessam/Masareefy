@@ -1,15 +1,15 @@
 {
-  "name": "مصاريفي",
-  "short_name": "مصاريفي",
-  "description": "تطبيق لتسجيل ومتابعة المصاريف اليومية",
+  "name": "Masareefy",
+  "short_name": "Masareefy",
+  "description": "Track and manage your daily expenses",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0f1115",
   "theme_color": "#4f7cff",
-  "dir": "rtl",
-  "lang": "ar",
+  "dir": "ltr",
+  "lang": "en",
   "icons": [
     {
       "src": "icon-192.png",

@@ -1,15 +1,15 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>مصاريفي</title>
+<title>Masareefy</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#4f7cff">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="مصاريفي">
+<meta name="apple-mobile-web-app-title" content="Masareefy">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
@@ -37,6 +37,7 @@
   }
   header h1{margin:0;font-size:22px;font-weight:800;}
   header p{margin:4px 0 0;color:var(--muted);font-size:13px;}
+  header .credit{margin-top:6px;color:var(--muted);font-size:11px;letter-spacing:.3px;}
 
   .summary{
     display:flex;
@@ -59,6 +60,35 @@
   .summary .box.today .val{color:var(--accent2);}
 
   .container{max-width:520px;margin:0 auto;padding:0 16px;}
+
+  .drive-bar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:10px 14px;
+    margin-bottom:14px;
+    font-size:13px;
+    gap:8px;
+  }
+  .drive-bar .status{display:flex;align-items:center;gap:8px;color:var(--muted);min-width:0;}
+  .drive-bar .status span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .drive-dot{width:8px;height:8px;border-radius:50%;background:var(--danger);flex-shrink:0;}
+  .drive-dot.on{background:var(--accent2);}
+  .drive-btn{
+    background:var(--card2);
+    border:1px solid var(--border);
+    color:var(--text);
+    padding:7px 12px;
+    border-radius:8px;
+    font-size:12px;
+    cursor:pointer;
+    white-space:nowrap;
+    flex-shrink:0;
+  }
+  .drive-btn.connected{color:var(--accent2);border-color:var(--accent2);}
 
   form{
     background:var(--card);
@@ -103,6 +133,26 @@
     border-color:var(--accent);
     color:#fff;
     font-weight:700;
+  }
+  .cat-btn.add-new{
+    border-style:dashed;
+    color:var(--muted);
+  }
+  .add-cat-row{
+    display:flex;
+    gap:8px;
+    margin-top:2px;
+  }
+  .add-cat-row input{flex:1;}
+  .add-cat-row button{
+    background:var(--accent2);
+    color:#0f1115;
+    border:none;
+    padding:0 16px;
+    border-radius:10px;
+    font-weight:700;
+    font-size:14px;
+    cursor:pointer;
   }
   button.submit{
     background:var(--accent);
@@ -173,47 +223,30 @@
     padding:20px 0;
   }
 
-  .drive-bar{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    background:var(--card);
-    border:1px solid var(--border);
-    border-radius:12px;
-    padding:10px 14px;
-    margin-bottom:14px;
-    font-size:13px;
+  footer{
+    text-align:center;
+    color:var(--muted);
+    font-size:11px;
+    padding:24px 16px 0;
   }
-  .drive-bar .status{display:flex;align-items:center;gap:8px;color:var(--muted);}
-  .drive-dot{width:8px;height:8px;border-radius:50%;background:var(--danger);flex-shrink:0;}
-  .drive-dot.on{background:var(--accent2);}
-  .drive-btn{
-    background:var(--card2);
-    border:1px solid var(--border);
-    color:var(--text);
-    padding:7px 12px;
-    border-radius:8px;
-    font-size:12px;
-    cursor:pointer;
-  }
-  .drive-btn.connected{color:var(--accent2);border-color:var(--accent2);}
 </style>
 </head>
 <body>
 
 <header>
-  <h1>💰 مصاريفي</h1>
-  <p>سجّل مصاريفك اليومية وتابع إجمالي الشهر</p>
+  <h1>💰 Masareefy</h1>
+  <p>Track your daily expenses and monthly total</p>
+  <div class="credit">Made by Hamed Essam</div>
 </header>
 
 <div class="summary">
   <div class="box today">
     <div class="val" id="todayTotal">0</div>
-    <div class="lbl">صرفت النهارده</div>
+    <div class="lbl">Spent Today</div>
   </div>
   <div class="box month">
     <div class="val" id="monthTotal">0</div>
-    <div class="lbl" id="monthLabel">إجمالي الشهر</div>
+    <div class="lbl" id="monthLabel">This Month</div>
   </div>
 </div>
 
@@ -222,215 +255,69 @@
   <div class="drive-bar">
     <div class="status">
       <span class="drive-dot" id="driveDot"></span>
-      <span id="driveStatusText">مش متصل بـ Google Drive</span>
+      <span id="driveStatusText">Not connected to Google Drive</span>
     </div>
     <div style="display:flex;gap:6px;">
-      <button class="drive-btn" id="restoreBtn" style="display:none;">استرجاع</button>
-      <button class="drive-btn" id="driveBtn">ربط Drive</button>
+      <button class="drive-btn" id="restoreBtn" style="display:none;">Restore</button>
+      <button class="drive-btn" id="driveBtn">Connect Drive</button>
     </div>
   </div>
 
   <form id="expenseForm">
     <div class="row">
       <div style="flex:1">
-        <label>المبلغ (جنيه)</label>
-        <input type="number" id="amount" inputmode="decimal" placeholder="مثلاً 150" required min="0" step="0.01">
+        <label>Amount (EGP)</label>
+        <input type="number" id="amount" inputmode="decimal" placeholder="e.g. 150" required min="0" step="0.01">
       </div>
       <div style="flex:1">
-        <label>التاريخ</label>
+        <label>Date</label>
         <input type="date" id="date" required>
       </div>
     </div>
 
     <div>
-      <label>الفئة</label>
+      <label>Category</label>
       <div class="cats" id="catButtons"></div>
+      <div class="add-cat-row" id="addCatRow" style="display:none;">
+        <input type="text" id="newCatInput" placeholder="New category name">
+        <button type="button" id="confirmAddCat">Add</button>
+      </div>
     </div>
 
     <div>
-      <label>ملاحظة (اختياري)</label>
-      <input type="text" id="note" placeholder="مثلاً غدا مع الأصحاب">
+      <label>Note (optional)</label>
+      <input type="text" id="note" placeholder="e.g. Lunch with friends">
     </div>
 
-    <button type="submit" class="submit">➕ إضافة المصروف</button>
+    <button type="submit" class="submit">➕ Add Expense</button>
   </form>
 
-  <div class="section-title">تفصيل حسب الفئة (الشهر ده)</div>
+  <div class="section-title">Breakdown by Category (This Month)</div>
   <div class="cat-breakdown" id="catBreakdown"></div>
 
-  <div class="section-title">آخر المصاريف</div>
+  <div class="section-title">Recent Expenses</div>
   <div id="expenseList"></div>
 
 </div>
 
+<footer>Masareefy · Made by Hamed Essam</footer>
+
 <script>
-const CATEGORIES = ["أكل", "مواصلات", "تسوق", "فواتير", "ترفيه", "صحة", "بادل", "تانى"];
+const DEFAULT_CATEGORIES = ["Food", "Transport", "Shopping", "Bills", "Entertainment", "Health", "Padel", "Other"];
 const STORAGE_KEY = "expenses_data_v1";
-
-// ====== Google Drive Backup Config ======
-// حط هنا الـ Client ID اللي هتاخده من Google Cloud Console
-const GOOGLE_CLIENT_ID = "931654449000-44b3jrfvpdvlpbcsah0sj0alggkourbg.apps.googleusercontent.com";
-const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
-const BACKUP_FILENAME = "masarify_backup.json";
-
-let driveAccessToken = null;
-let driveFileId = localStorage.getItem("drive_file_id") || null;
-let tokenClient = null;
-let driveConnected = localStorage.getItem("drive_connected") === "1";
-
-function setDriveStatus(connected, text){
-  const dot = document.getElementById("driveDot");
-  const txt = document.getElementById("driveStatusText");
-  const btn = document.getElementById("driveBtn");
-  const restoreBtn = document.getElementById("restoreBtn");
-  dot.classList.toggle("on", connected);
-  txt.textContent = text || (connected ? "متصل بـ Google Drive" : "مش متصل بـ Google Drive");
-  btn.textContent = connected ? "متصل ✓" : "ربط Drive";
-  btn.classList.toggle("connected", connected);
-  restoreBtn.style.display = connected ? "inline-block" : "none";
-}
-
-function initGoogleDrive(){
-  if (typeof google === "undefined" || !google.accounts) {
-    setTimeout(initGoogleDrive, 400);
-    return;
-  }
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID,
-    scope: DRIVE_SCOPE,
-    callback: (resp) => {
-      if (resp && resp.access_token) {
-        driveAccessToken = resp.access_token;
-        driveConnected = true;
-        localStorage.setItem("drive_connected", "1");
-        setDriveStatus(true);
-        backupToDrive();
-      }
-    },
-  });
-  setDriveStatus(driveConnected, driveConnected ? "متصل بـ Google Drive" : "مش متصل بـ Google Drive");
-
-  // try silent token refresh on load if previously connected
-  if (driveConnected) {
-    tokenClient.requestAccessToken({ prompt: "none" });
-  }
-}
-
-document.getElementById("driveBtn").addEventListener("click", () => {
-  if (!tokenClient) return;
-  tokenClient.requestAccessToken({ prompt: driveConnected ? "none" : "consent" });
-});
-
-async function findExistingBackupFile(){
-  const res = await fetch(
-    "https://www.googleapis.com/drive/v3/files?q=" +
-      encodeURIComponent(`name='${BACKUP_FILENAME}' and trashed=false`) +
-      "&spaces=drive&fields=files(id,name)",
-    { headers: { Authorization: "Bearer " + driveAccessToken } }
-  );
-  const data = await res.json();
-  if (data.files && data.files.length > 0) {
-    driveFileId = data.files[0].id;
-    localStorage.setItem("drive_file_id", driveFileId);
-    return driveFileId;
-  }
-  return null;
-}
-
-async function backupToDrive(){
-  if (!driveAccessToken || !driveConnected) return;
-  try {
-    if (!driveFileId) {
-      await findExistingBackupFile();
-    }
-
-    const content = JSON.stringify({ expenses, exportedAt: new Date().toISOString() }, null, 2);
-    const metadata = { name: BACKUP_FILENAME, mimeType: "application/json" };
-
-    if (driveFileId) {
-      // update existing file
-      await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`, {
-        method: "PATCH",
-        headers: {
-          Authorization: "Bearer " + driveAccessToken,
-          "Content-Type": "application/json",
-        },
-        body: content,
-      });
-    } else {
-      // create new file
-      const boundary = "masarify_boundary";
-      const body =
-        `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` +
-        JSON.stringify(metadata) +
-        `\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n` +
-        content +
-        `\r\n--${boundary}--`;
-
-      const res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + driveAccessToken,
-          "Content-Type": `multipart/related; boundary=${boundary}`,
-        },
-        body,
-      });
-      const data = await res.json();
-      if (data.id) {
-        driveFileId = data.id;
-        localStorage.setItem("drive_file_id", driveFileId);
-      }
-    }
-    setDriveStatus(true, "آخر نسخة: " + new Date().toLocaleTimeString("ar-EG"));
-  } catch (err) {
-    setDriveStatus(true, "فشل الرفع، هيحاول تاني بعدين");
-  }
-}
-
-window.addEventListener("load", initGoogleDrive);
-
-async function restoreFromDrive(){
-  if (!driveAccessToken) {
-    alert("لازم تكون متصل بـ Drive الأول.");
-    return;
-  }
-  if (!confirm("هيتم استبدال كل المصاريف الحالية على الجهاز ده بالنسخة المحفوظة على Drive. متأكد؟")) {
-    return;
-  }
-  try {
-    if (!driveFileId) {
-      await findExistingBackupFile();
-    }
-    if (!driveFileId) {
-      alert("مفيش نسخة احتياطية محفوظة على Drive لسه.");
-      return;
-    }
-    const res = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
-      { headers: { Authorization: "Bearer " + driveAccessToken } }
-    );
-    const data = await res.json();
-    if (Array.isArray(data.expenses)) {
-      expenses = data.expenses;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
-      render();
-      alert("تم الاسترجاع بنجاح ✅");
-    } else {
-      alert("الملف اللي على Drive مش بالشكل المتوقع.");
-    }
-  } catch (err) {
-    alert("حصل خطأ أثناء الاسترجاع، حاول تاني.");
-  }
-}
-
-document.getElementById("restoreBtn").addEventListener("click", restoreFromDrive);
+const CATEGORIES_KEY = "categories_v1";
 
 let expenses = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+let CATEGORIES = JSON.parse(localStorage.getItem(CATEGORIES_KEY) || "null") || DEFAULT_CATEGORIES.slice();
 let selectedCat = CATEGORIES[0];
 
 const dateInput = document.getElementById("date");
 const todayStr = new Date().toISOString().slice(0,10);
 dateInput.value = todayStr;
+
+function saveCategories(){
+  localStorage.setItem(CATEGORIES_KEY, JSON.stringify(CATEGORIES));
+}
 
 function renderCatButtons(){
   const wrap = document.getElementById("catButtons");
@@ -442,6 +329,35 @@ function renderCatButtons(){
     btn.onclick = () => { selectedCat = cat; renderCatButtons(); };
     wrap.appendChild(btn);
   });
+  const addBtn = document.createElement("div");
+  addBtn.className = "cat-btn add-new";
+  addBtn.textContent = "+ New";
+  addBtn.onclick = () => {
+    const row = document.getElementById("addCatRow");
+    row.style.display = row.style.display === "none" ? "flex" : "none";
+    if (row.style.display === "flex") document.getElementById("newCatInput").focus();
+  };
+  wrap.appendChild(addBtn);
+}
+
+document.getElementById("confirmAddCat").addEventListener("click", addNewCategory);
+document.getElementById("newCatInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); addNewCategory(); }
+});
+
+function addNewCategory(){
+  const input = document.getElementById("newCatInput");
+  const name = input.value.trim();
+  if (!name) return;
+  if (!CATEGORIES.includes(name)) {
+    CATEGORIES.push(name);
+    saveCategories();
+    backupToDrive();
+  }
+  selectedCat = name;
+  input.value = "";
+  document.getElementById("addCatRow").style.display = "none";
+  renderCatButtons();
 }
 
 function save(){
@@ -450,7 +366,7 @@ function save(){
 }
 
 function fmt(n){
-  return Number(n).toLocaleString("ar-EG", {maximumFractionDigits: 2});
+  return Number(n).toLocaleString("en-US", {maximumFractionDigits: 2});
 }
 
 function monthKey(dateStr){
@@ -460,7 +376,6 @@ function monthKey(dateStr){
 function render(){
   const currentMonth = todayStr.slice(0,7);
 
-  // totals
   const todayTotal = expenses.filter(e => e.date === todayStr)
                               .reduce((s,e)=>s+Number(e.amount),0);
   const monthExpenses = expenses.filter(e => monthKey(e.date) === currentMonth);
@@ -469,11 +384,10 @@ function render(){
   document.getElementById("todayTotal").textContent = fmt(todayTotal);
   document.getElementById("monthTotal").textContent = fmt(monthTotal);
 
-  const monthNames = ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
+  const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
   const mIdx = parseInt(currentMonth.split("-")[1],10)-1;
-  document.getElementById("monthLabel").textContent = "إجمالي شهر " + monthNames[mIdx];
+  document.getElementById("monthLabel").textContent = monthNames[mIdx] + " Total";
 
-  // category breakdown for this month
   const byCat = {};
   monthExpenses.forEach(e => {
     byCat[e.category] = (byCat[e.category]||0) + Number(e.amount);
@@ -482,22 +396,21 @@ function render(){
   catWrap.innerHTML = "";
   const sortedCats = Object.keys(byCat).sort((a,b)=>byCat[b]-byCat[a]);
   if(sortedCats.length === 0){
-    catWrap.innerHTML = '<div class="empty">مفيش مصاريف مسجلة الشهر ده لسه</div>';
+    catWrap.innerHTML = '<div class="empty">No expenses recorded this month yet</div>';
   } else {
     sortedCats.forEach(cat => {
       const row = document.createElement("div");
       row.className = "cat-row";
-      row.innerHTML = `<span>${cat}</span><span class="amt">${fmt(byCat[cat])} ج.م</span>`;
+      row.innerHTML = `<span>${cat}</span><span class="amt">EGP ${fmt(byCat[cat])}</span>`;
       catWrap.appendChild(row);
     });
   }
 
-  // recent list (latest 20, newest first)
   const listWrap = document.getElementById("expenseList");
   listWrap.innerHTML = "";
   const sorted = [...expenses].sort((a,b) => (b.date+b.id) > (a.date+a.id) ? 1 : -1).slice(0,20);
   if(sorted.length === 0){
-    listWrap.innerHTML = '<div class="empty">مفيش مصاريف مسجلة لسه، ابدأ بإضافة أول مصروف 👆</div>';
+    listWrap.innerHTML = '<div class="empty">No expenses yet, add your first one above 👆</div>';
   } else {
     sorted.forEach(e => {
       const item = document.createElement("div");
@@ -508,7 +421,7 @@ function render(){
           <span class="date">${e.date}${e.note ? " · " + e.note : ""}</span>
         </div>
         <div class="right">
-          <span class="amt">${fmt(e.amount)} ج.م</span>
+          <span class="amt">EGP ${fmt(e.amount)}</span>
           <button class="del-btn" data-id="${e.id}">✕</button>
         </div>
       `;
@@ -554,6 +467,165 @@ if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js").catch(() => {});
   });
 }
+
+// ====== Google Drive Backup ======
+const GOOGLE_CLIENT_ID = "931654449000-44b3jrfvpdvlpbcsah0sj0alggkourbg.apps.googleusercontent.com";
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+const BACKUP_FILENAME = "masarify_backup.json";
+
+let driveAccessToken = null;
+let driveFileId = localStorage.getItem("drive_file_id") || null;
+let tokenClient = null;
+let driveConnected = localStorage.getItem("drive_connected") === "1";
+
+function setDriveStatus(connected, text){
+  const dot = document.getElementById("driveDot");
+  const txt = document.getElementById("driveStatusText");
+  const btn = document.getElementById("driveBtn");
+  const restoreBtn = document.getElementById("restoreBtn");
+  dot.classList.toggle("on", connected);
+  txt.textContent = text || (connected ? "Connected to Google Drive" : "Not connected to Google Drive");
+  btn.textContent = connected ? "Connected ✓" : "Connect Drive";
+  btn.classList.toggle("connected", connected);
+  restoreBtn.style.display = connected ? "inline-block" : "none";
+}
+
+function initGoogleDrive(){
+  if (typeof google === "undefined" || !google.accounts) {
+    setTimeout(initGoogleDrive, 400);
+    return;
+  }
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: DRIVE_SCOPE,
+    callback: (resp) => {
+      if (resp && resp.access_token) {
+        driveAccessToken = resp.access_token;
+        driveConnected = true;
+        localStorage.setItem("drive_connected", "1");
+        setDriveStatus(true);
+        backupToDrive();
+      }
+    },
+  });
+  setDriveStatus(driveConnected, driveConnected ? "Connected to Google Drive" : "Not connected to Google Drive");
+
+  if (driveConnected) {
+    tokenClient.requestAccessToken({ prompt: "none" });
+  }
+}
+
+document.getElementById("driveBtn").addEventListener("click", () => {
+  if (!tokenClient) return;
+  tokenClient.requestAccessToken({ prompt: driveConnected ? "none" : "consent" });
+});
+
+async function findExistingBackupFile(){
+  const res = await fetch(
+    "https://www.googleapis.com/drive/v3/files?q=" +
+      encodeURIComponent(`name='${BACKUP_FILENAME}' and trashed=false`) +
+      "&spaces=drive&fields=files(id,name)",
+    { headers: { Authorization: "Bearer " + driveAccessToken } }
+  );
+  const data = await res.json();
+  if (data.files && data.files.length > 0) {
+    driveFileId = data.files[0].id;
+    localStorage.setItem("drive_file_id", driveFileId);
+    return driveFileId;
+  }
+  return null;
+}
+
+async function backupToDrive(){
+  if (!driveAccessToken || !driveConnected) return;
+  try {
+    if (!driveFileId) {
+      await findExistingBackupFile();
+    }
+
+    const content = JSON.stringify({ expenses, categories: CATEGORIES, exportedAt: new Date().toISOString() }, null, 2);
+    const metadata = { name: BACKUP_FILENAME, mimeType: "application/json" };
+
+    if (driveFileId) {
+      await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`, {
+        method: "PATCH",
+        headers: {
+          Authorization: "Bearer " + driveAccessToken,
+          "Content-Type": "application/json",
+        },
+        body: content,
+      });
+    } else {
+      const boundary = "masarify_boundary";
+      const body =
+        `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` +
+        JSON.stringify(metadata) +
+        `\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n` +
+        content +
+        `\r\n--${boundary}--`;
+
+      const res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + driveAccessToken,
+          "Content-Type": `multipart/related; boundary=${boundary}`,
+        },
+        body,
+      });
+      const data = await res.json();
+      if (data.id) {
+        driveFileId = data.id;
+        localStorage.setItem("drive_file_id", driveFileId);
+      }
+    }
+    setDriveStatus(true, "Last backup: " + new Date().toLocaleTimeString("en-US"));
+  } catch (err) {
+    setDriveStatus(true, "Backup failed, will retry later");
+  }
+}
+
+window.addEventListener("load", initGoogleDrive);
+
+async function restoreFromDrive(){
+  if (!driveAccessToken) {
+    alert("You need to connect to Drive first.");
+    return;
+  }
+  if (!confirm("This will replace all expenses on this device with the backup saved on Drive. Are you sure?")) {
+    return;
+  }
+  try {
+    if (!driveFileId) {
+      await findExistingBackupFile();
+    }
+    if (!driveFileId) {
+      alert("No backup found on Drive yet.");
+      return;
+    }
+    const res = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
+      { headers: { Authorization: "Bearer " + driveAccessToken } }
+    );
+    const data = await res.json();
+    if (Array.isArray(data.expenses)) {
+      expenses = data.expenses;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
+      if (Array.isArray(data.categories) && data.categories.length > 0) {
+        CATEGORIES = data.categories;
+        saveCategories();
+      }
+      renderCatButtons();
+      render();
+      alert("Restored successfully ✅");
+    } else {
+      alert("The file on Drive isn't in the expected format.");
+    }
+  } catch (err) {
+    alert("Something went wrong while restoring. Please try again.");
+  }
+}
+
+document.getElementById("restoreBtn").addEventListener("click", restoreFromDrive);
 </script>
 
 </body>
