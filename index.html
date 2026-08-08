@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="مصاريفي">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
     --bg:#0f1115;
@@ -171,6 +172,31 @@
     font-size:13px;
     padding:20px 0;
   }
+
+  .drive-bar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:10px 14px;
+    margin-bottom:14px;
+    font-size:13px;
+  }
+  .drive-bar .status{display:flex;align-items:center;gap:8px;color:var(--muted);}
+  .drive-dot{width:8px;height:8px;border-radius:50%;background:var(--danger);flex-shrink:0;}
+  .drive-dot.on{background:var(--accent2);}
+  .drive-btn{
+    background:var(--card2);
+    border:1px solid var(--border);
+    color:var(--text);
+    padding:7px 12px;
+    border-radius:8px;
+    font-size:12px;
+    cursor:pointer;
+  }
+  .drive-btn.connected{color:var(--accent2);border-color:var(--accent2);}
 </style>
 </head>
 <body>
@@ -192,6 +218,14 @@
 </div>
 
 <div class="container">
+
+  <div class="drive-bar">
+    <div class="status">
+      <span class="drive-dot" id="driveDot"></span>
+      <span id="driveStatusText">مش متصل بـ Google Drive</span>
+    </div>
+    <button class="drive-btn" id="driveBtn">ربط Drive</button>
+  </div>
 
   <form id="expenseForm">
     <div class="row">
@@ -230,6 +264,126 @@
 const CATEGORIES = ["أكل", "مواصلات", "تسوق", "فواتير", "ترفيه", "صحة", "بادل", "تانى"];
 const STORAGE_KEY = "expenses_data_v1";
 
+// ====== Google Drive Backup Config ======
+// حط هنا الـ Client ID اللي هتاخده من Google Cloud Console
+const GOOGLE_CLIENT_ID = "PASTE_YOUR_CLIENT_ID_HERE.apps.googleusercontent.com";
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+const BACKUP_FILENAME = "masarify_backup.json";
+
+let driveAccessToken = null;
+let driveFileId = localStorage.getItem("drive_file_id") || null;
+let tokenClient = null;
+let driveConnected = localStorage.getItem("drive_connected") === "1";
+
+function setDriveStatus(connected, text){
+  const dot = document.getElementById("driveDot");
+  const txt = document.getElementById("driveStatusText");
+  const btn = document.getElementById("driveBtn");
+  dot.classList.toggle("on", connected);
+  txt.textContent = text || (connected ? "متصل بـ Google Drive" : "مش متصل بـ Google Drive");
+  btn.textContent = connected ? "متصل ✓" : "ربط Drive";
+  btn.classList.toggle("connected", connected);
+}
+
+function initGoogleDrive(){
+  if (typeof google === "undefined" || !google.accounts) {
+    setTimeout(initGoogleDrive, 400);
+    return;
+  }
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: DRIVE_SCOPE,
+    callback: (resp) => {
+      if (resp && resp.access_token) {
+        driveAccessToken = resp.access_token;
+        driveConnected = true;
+        localStorage.setItem("drive_connected", "1");
+        setDriveStatus(true);
+        backupToDrive();
+      }
+    },
+  });
+  setDriveStatus(driveConnected, driveConnected ? "متصل بـ Google Drive" : "مش متصل بـ Google Drive");
+
+  // try silent token refresh on load if previously connected
+  if (driveConnected) {
+    tokenClient.requestAccessToken({ prompt: "none" });
+  }
+}
+
+document.getElementById("driveBtn").addEventListener("click", () => {
+  if (!tokenClient) return;
+  tokenClient.requestAccessToken({ prompt: driveConnected ? "none" : "consent" });
+});
+
+async function findExistingBackupFile(){
+  const res = await fetch(
+    "https://www.googleapis.com/drive/v3/files?q=" +
+      encodeURIComponent(`name='${BACKUP_FILENAME}' and trashed=false`) +
+      "&spaces=drive&fields=files(id,name)",
+    { headers: { Authorization: "Bearer " + driveAccessToken } }
+  );
+  const data = await res.json();
+  if (data.files && data.files.length > 0) {
+    driveFileId = data.files[0].id;
+    localStorage.setItem("drive_file_id", driveFileId);
+    return driveFileId;
+  }
+  return null;
+}
+
+async function backupToDrive(){
+  if (!driveAccessToken || !driveConnected) return;
+  try {
+    if (!driveFileId) {
+      await findExistingBackupFile();
+    }
+
+    const content = JSON.stringify({ expenses, exportedAt: new Date().toISOString() }, null, 2);
+    const metadata = { name: BACKUP_FILENAME, mimeType: "application/json" };
+
+    if (driveFileId) {
+      // update existing file
+      await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`, {
+        method: "PATCH",
+        headers: {
+          Authorization: "Bearer " + driveAccessToken,
+          "Content-Type": "application/json",
+        },
+        body: content,
+      });
+    } else {
+      // create new file
+      const boundary = "masarify_boundary";
+      const body =
+        `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` +
+        JSON.stringify(metadata) +
+        `\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n` +
+        content +
+        `\r\n--${boundary}--`;
+
+      const res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + driveAccessToken,
+          "Content-Type": `multipart/related; boundary=${boundary}`,
+        },
+        body,
+      });
+      const data = await res.json();
+      if (data.id) {
+        driveFileId = data.id;
+        localStorage.setItem("drive_file_id", driveFileId);
+      }
+    }
+    setDriveStatus(true, "آخر نسخة: " + new Date().toLocaleTimeString("ar-EG"));
+  } catch (err) {
+    setDriveStatus(true, "فشل الرفع، هيحاول تاني بعدين");
+  }
+}
+
+window.addEventListener("load", initGoogleDrive);
+
 let expenses = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
 let selectedCat = CATEGORIES[0];
 
@@ -251,6 +405,7 @@ function renderCatButtons(){
 
 function save(){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
+  backupToDrive();
 }
 
 function fmt(n){
