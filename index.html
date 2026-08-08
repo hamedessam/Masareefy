@@ -57,7 +57,35 @@
   .summary .box .val{font-size:20px;font-weight:800;}
   .summary .box .lbl{font-size:11px;color:var(--muted);margin-top:2px;}
   .summary .box.month .val{color:var(--accent);}
-  .summary .box.today .val{color:var(--accent2);}
+  .summary .box.month{padding:20px 10px;}
+  .summary .box.month .val{font-size:30px;}
+
+  .month-tabs{
+    display:flex;
+    gap:8px;
+    overflow-x:auto;
+    padding:2px 0 14px;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+  }
+  .month-tabs::-webkit-scrollbar{display:none;}
+  .month-tab{
+    flex-shrink:0;
+    padding:8px 14px;
+    border-radius:20px;
+    border:1px solid var(--border);
+    background:var(--card);
+    color:var(--muted);
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .month-tab.active{
+    background:var(--accent);
+    border-color:var(--accent);
+    color:#fff;
+  }
 
   .container{max-width:520px;margin:0 auto;padding:0 16px;}
 
@@ -240,10 +268,6 @@
 </header>
 
 <div class="summary">
-  <div class="box today">
-    <div class="val" id="todayTotal">0</div>
-    <div class="lbl">Spent Today</div>
-  </div>
   <div class="box month">
     <div class="val" id="monthTotal">0</div>
     <div class="lbl" id="monthLabel">This Month</div>
@@ -251,6 +275,8 @@
 </div>
 
 <div class="container">
+
+  <div class="month-tabs" id="monthTabs"></div>
 
   <div class="drive-bar">
     <div class="status">
@@ -373,20 +399,46 @@ function monthKey(dateStr){
   return dateStr.slice(0,7); // YYYY-MM
 }
 
-function render(){
-  const currentMonth = todayStr.slice(0,7);
+const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
-  const todayTotal = expenses.filter(e => e.date === todayStr)
-                              .reduce((s,e)=>s+Number(e.amount),0);
-  const monthExpenses = expenses.filter(e => monthKey(e.date) === currentMonth);
+function monthLabel(key){
+  const [y, m] = key.split("-");
+  return MONTH_NAMES[parseInt(m,10)-1].slice(0,3) + " " + y;
+}
+
+let selectedMonth = monthKey(todayStr);
+
+function getMonthList(){
+  const set = new Set(expenses.map(e => monthKey(e.date)));
+  set.add(monthKey(todayStr)); // always include current month, even with 0 expenses
+  return Array.from(set).sort((a,b) => b.localeCompare(a)); // newest first
+}
+
+function renderMonthTabs(){
+  const wrap = document.getElementById("monthTabs");
+  wrap.innerHTML = "";
+  const months = getMonthList();
+  months.forEach(key => {
+    const tab = document.createElement("div");
+    tab.className = "month-tab" + (key === selectedMonth ? " active" : "");
+    tab.textContent = monthLabel(key);
+    tab.onclick = () => { selectedMonth = key; renderMonthTabs(); render(); };
+    wrap.appendChild(tab);
+  });
+}
+
+function render(){
+  // keep selectedMonth pointing at the real current month if the day rolled over
+  const realCurrentMonth = monthKey(todayStr);
+  if (!getMonthList().includes(selectedMonth)) {
+    selectedMonth = realCurrentMonth;
+  }
+
+  const monthExpenses = expenses.filter(e => monthKey(e.date) === selectedMonth);
   const monthTotal = monthExpenses.reduce((s,e)=>s+Number(e.amount),0);
 
-  document.getElementById("todayTotal").textContent = fmt(todayTotal);
   document.getElementById("monthTotal").textContent = fmt(monthTotal);
-
-  const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-  const mIdx = parseInt(currentMonth.split("-")[1],10)-1;
-  document.getElementById("monthLabel").textContent = monthNames[mIdx] + " Total";
+  document.getElementById("monthLabel").textContent = monthLabel(selectedMonth) + " Total";
 
   const byCat = {};
   monthExpenses.forEach(e => {
@@ -408,9 +460,9 @@ function render(){
 
   const listWrap = document.getElementById("expenseList");
   listWrap.innerHTML = "";
-  const sorted = [...expenses].sort((a,b) => (b.date+b.id) > (a.date+a.id) ? 1 : -1).slice(0,20);
+  const sorted = [...monthExpenses].sort((a,b) => (b.date+b.id) > (a.date+a.id) ? 1 : -1).slice(0,30);
   if(sorted.length === 0){
-    listWrap.innerHTML = '<div class="empty">No expenses yet, add your first one above 👆</div>';
+    listWrap.innerHTML = '<div class="empty">No expenses recorded for this month yet</div>';
   } else {
     sorted.forEach(e => {
       const item = document.createElement("div");
@@ -431,6 +483,7 @@ function render(){
       btn.onclick = () => {
         expenses = expenses.filter(e => e.id !== btn.dataset.id);
         save();
+        renderMonthTabs();
         render();
       };
     });
@@ -452,6 +505,7 @@ document.getElementById("expenseForm").addEventListener("submit", (e) => {
     note: note
   });
   save();
+  renderMonthTabs();
   render();
 
   document.getElementById("amount").value = "";
@@ -460,6 +514,7 @@ document.getElementById("expenseForm").addEventListener("submit", (e) => {
 });
 
 renderCatButtons();
+renderMonthTabs();
 render();
 
 if ("serviceWorker" in navigator) {
@@ -615,6 +670,7 @@ async function restoreFromDrive(){
         saveCategories();
       }
       renderCatButtons();
+      renderMonthTabs();
       render();
       alert("Restored successfully ✅");
     } else {
