@@ -224,7 +224,10 @@
       <span class="drive-dot" id="driveDot"></span>
       <span id="driveStatusText">مش متصل بـ Google Drive</span>
     </div>
-    <button class="drive-btn" id="driveBtn">ربط Drive</button>
+    <div style="display:flex;gap:6px;">
+      <button class="drive-btn" id="restoreBtn" style="display:none;">استرجاع</button>
+      <button class="drive-btn" id="driveBtn">ربط Drive</button>
+    </div>
   </div>
 
   <form id="expenseForm">
@@ -279,10 +282,12 @@ function setDriveStatus(connected, text){
   const dot = document.getElementById("driveDot");
   const txt = document.getElementById("driveStatusText");
   const btn = document.getElementById("driveBtn");
+  const restoreBtn = document.getElementById("restoreBtn");
   dot.classList.toggle("on", connected);
   txt.textContent = text || (connected ? "متصل بـ Google Drive" : "مش متصل بـ Google Drive");
   btn.textContent = connected ? "متصل ✓" : "ربط Drive";
   btn.classList.toggle("connected", connected);
+  restoreBtn.style.display = connected ? "inline-block" : "none";
 }
 
 function initGoogleDrive(){
@@ -383,6 +388,42 @@ async function backupToDrive(){
 }
 
 window.addEventListener("load", initGoogleDrive);
+
+async function restoreFromDrive(){
+  if (!driveAccessToken) {
+    alert("لازم تكون متصل بـ Drive الأول.");
+    return;
+  }
+  if (!confirm("هيتم استبدال كل المصاريف الحالية على الجهاز ده بالنسخة المحفوظة على Drive. متأكد؟")) {
+    return;
+  }
+  try {
+    if (!driveFileId) {
+      await findExistingBackupFile();
+    }
+    if (!driveFileId) {
+      alert("مفيش نسخة احتياطية محفوظة على Drive لسه.");
+      return;
+    }
+    const res = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
+      { headers: { Authorization: "Bearer " + driveAccessToken } }
+    );
+    const data = await res.json();
+    if (Array.isArray(data.expenses)) {
+      expenses = data.expenses;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
+      render();
+      alert("تم الاسترجاع بنجاح ✅");
+    } else {
+      alert("الملف اللي على Drive مش بالشكل المتوقع.");
+    }
+  } catch (err) {
+    alert("حصل خطأ أثناء الاسترجاع، حاول تاني.");
+  }
+}
+
+document.getElementById("restoreBtn").addEventListener("click", restoreFromDrive);
 
 let expenses = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
 let selectedCat = CATEGORIES[0];
