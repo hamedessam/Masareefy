@@ -59,6 +59,9 @@
   .summary .box.month .val{color:var(--accent);}
   .summary .box.month{padding:20px 10px;}
   .summary .box.month .val{font-size:30px;}
+  .summary .box.month .unit{font-size:15px;font-weight:600;color:var(--muted);}
+  .summary .box.month .today-sub{margin-top:8px;font-size:12px;color:var(--muted);}
+  .summary .box.month .today-sub span{color:var(--accent2);font-weight:700;}
 
   .month-tabs{
     display:flex;
@@ -269,8 +272,9 @@
 
 <div class="summary">
   <div class="box month">
-    <div class="val" id="monthTotal">0</div>
+    <div class="val"><span id="monthTotal">0</span> <span class="unit">EGP</span></div>
     <div class="lbl" id="monthLabel">This Month</div>
+    <div class="today-sub">Today: <span id="todayTotal">0</span> EGP</div>
   </div>
 </div>
 
@@ -330,6 +334,20 @@
 
 <script>
 const DEFAULT_CATEGORIES = ["Food", "Transport", "Shopping", "Bills", "Entertainment", "Health", "Padel", "Other"];
+const CATEGORY_EMOJI = {
+  "Food": "🍔",
+  "Transport": "🚕",
+  "Shopping": "🛍️",
+  "Bills": "💡",
+  "Entertainment": "🎬",
+  "Health": "🏥",
+  "Padel": "🎾",
+  "Other": "🗂️",
+  "Uncategorized": "❔"
+};
+function catEmoji(name){
+  return CATEGORY_EMOJI[name] ? CATEGORY_EMOJI[name] + " " : "";
+}
 const STORAGE_KEY = "expenses_data_v1";
 const CATEGORIES_KEY = "categories_v1";
 
@@ -351,7 +369,7 @@ function renderCatButtons(){
   CATEGORIES.forEach(cat => {
     const btn = document.createElement("div");
     btn.className = "cat-btn" + (cat === selectedCat ? " active" : "");
-    btn.textContent = cat;
+    btn.textContent = catEmoji(cat) + cat;
     btn.onclick = () => { selectedCat = cat; renderCatButtons(); };
     wrap.appendChild(btn);
   });
@@ -378,7 +396,7 @@ function addNewCategory(){
   if (!CATEGORIES.includes(name)) {
     CATEGORIES.push(name);
     saveCategories();
-    backupToDrive();
+    triggerBackup();
   }
   selectedCat = name;
   input.value = "";
@@ -388,7 +406,7 @@ function addNewCategory(){
 
 function save(){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
-  backupToDrive();
+  triggerBackup();
 }
 
 function fmt(n){
@@ -436,8 +454,11 @@ function render(){
 
   const monthExpenses = expenses.filter(e => monthKey(e.date) === selectedMonth);
   const monthTotal = monthExpenses.reduce((s,e)=>s+Number(e.amount),0);
+  const todayTotal = expenses.filter(e => e.date === todayStr)
+                              .reduce((s,e)=>s+Number(e.amount),0);
 
   document.getElementById("monthTotal").textContent = fmt(monthTotal);
+  document.getElementById("todayTotal").textContent = fmt(todayTotal);
   document.getElementById("monthLabel").textContent = monthLabel(selectedMonth) + " Total";
 
   const byCat = {};
@@ -453,7 +474,7 @@ function render(){
     sortedCats.forEach(cat => {
       const row = document.createElement("div");
       row.className = "cat-row";
-      row.innerHTML = `<span>${cat}</span><span class="amt">EGP ${fmt(byCat[cat])}</span>`;
+      row.innerHTML = `<span>${catEmoji(cat)}${cat}</span><span class="amt">EGP ${fmt(byCat[cat])}</span>`;
       catWrap.appendChild(row);
     });
   }
@@ -469,7 +490,7 @@ function render(){
       item.className = "expense-item";
       item.innerHTML = `
         <div class="left">
-          <span class="cat">${e.category}</span>
+          <span class="cat">${catEmoji(e.category)}${e.category}</span>
           <span class="date">${e.date}${e.note ? " · " + e.note : ""}</span>
         </div>
         <div class="right">
@@ -516,6 +537,16 @@ document.getElementById("expenseForm").addEventListener("submit", (e) => {
 renderCatButtons();
 renderMonthTabs();
 render();
+
+// If opened via the "Add Expense" home screen shortcut, jump straight to the form
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get("action") === "add") {
+  setTimeout(() => {
+    const amountInput = document.getElementById("amount");
+    document.getElementById("expenseForm").scrollIntoView({ behavior: "smooth", block: "start" });
+    amountInput.focus();
+  }, 150);
+}
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -564,10 +595,6 @@ function initGoogleDrive(){
     },
   });
   setDriveStatus(driveConnected, driveConnected ? "Connected to Google Drive" : "Not connected to Google Drive");
-
-  if (driveConnected) {
-    tokenClient.requestAccessToken({ prompt: "none" });
-  }
 }
 
 document.getElementById("driveBtn").addEventListener("click", () => {
@@ -589,6 +616,15 @@ async function findExistingBackupFile(){
     return driveFileId;
   }
   return null;
+}
+
+function triggerBackup(){
+  if (driveAccessToken) { backupToDrive(); return; }
+  if (driveConnected && tokenClient) {
+    // silent refresh only happens here, inside a real user action (tap),
+    // so the browser won't flag it as a blocked pop-up
+    tokenClient.requestAccessToken({ prompt: "none" });
+  }
 }
 
 async function backupToDrive(){
