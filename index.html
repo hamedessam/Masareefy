@@ -10,7 +10,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Masareefy">
-<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
 <style>
   :root{
     --bg:#0f1115;
@@ -247,6 +249,35 @@
     cursor:pointer;
     padding:4px 6px;
   }
+  .edit-btn{
+    background:none;
+    border:none;
+    color:var(--accent);
+    font-size:16px;
+    cursor:pointer;
+    padding:4px 6px;
+  }
+  .filter-bar{
+    display:flex;
+    gap:8px;
+    margin-bottom:12px;
+  }
+  .filter-bar input{flex:1;}
+  .filter-bar select{
+    width:auto;
+    max-width:130px;
+    flex-shrink:0;
+  }
+  .cancel-edit-btn{
+    background:var(--card2);
+    color:var(--muted);
+    border:1px solid var(--border);
+    padding:11px;
+    border-radius:10px;
+    font-size:14px;
+    cursor:pointer;
+    display:none;
+  }
   .empty{
     text-align:center;
     color:var(--muted);
@@ -284,12 +315,12 @@
 
   <div class="drive-bar">
     <div class="status">
-      <span class="drive-dot" id="driveDot"></span>
-      <span id="driveStatusText">Not connected to Google Drive</span>
+      <span class="drive-dot" id="syncDot"></span>
+      <span id="syncStatusText">Not signed in</span>
     </div>
     <div style="display:flex;gap:6px;">
-      <button class="drive-btn" id="restoreBtn" style="display:none;">Restore</button>
-      <button class="drive-btn" id="driveBtn">Connect Drive</button>
+      <button class="drive-btn" id="signInBtn">Sign in with Google</button>
+      <button class="drive-btn" id="signOutBtn" style="display:none;">Sign out</button>
     </div>
   </div>
 
@@ -320,12 +351,17 @@
     </div>
 
     <button type="submit" class="submit">➕ Add Expense</button>
+    <button type="button" class="cancel-edit-btn" id="cancelEditBtn">Cancel Edit</button>
   </form>
 
   <div class="section-title">Breakdown by Category (This Month)</div>
   <div class="cat-breakdown" id="catBreakdown"></div>
 
   <div class="section-title">Recent Expenses</div>
+  <div class="filter-bar">
+    <input type="text" id="searchInput" placeholder="Search notes, category, amount...">
+    <select id="filterCategory"><option value="">All</option></select>
+  </div>
   <div id="expenseList"></div>
 
 </div>
@@ -342,6 +378,7 @@ const CATEGORY_EMOJI = {
   "Entertainment": "🎬",
   "Health": "🏥",
   "Padel": "🎾",
+  "Gas": "⛽",
   "Other": "🗂️",
   "Uncategorized": "❔"
 };
@@ -382,6 +419,20 @@ function renderCatButtons(){
     if (row.style.display === "flex") document.getElementById("newCatInput").focus();
   };
   wrap.appendChild(addBtn);
+  renderFilterCategoryOptions();
+}
+
+function renderFilterCategoryOptions(){
+  const sel = document.getElementById("filterCategory");
+  const current = sel.value;
+  sel.innerHTML = '<option value="">All</option>';
+  CATEGORIES.forEach(cat => {
+    const opt = document.createElement("option");
+    opt.value = cat;
+    opt.textContent = catEmoji(cat) + cat;
+    sel.appendChild(opt);
+  });
+  sel.value = CATEGORIES.includes(current) ? current : "";
 }
 
 document.getElementById("confirmAddCat").addEventListener("click", addNewCategory);
@@ -396,7 +447,7 @@ function addNewCategory(){
   if (!CATEGORIES.includes(name)) {
     CATEGORIES.push(name);
     saveCategories();
-    triggerBackup();
+    pushToFirestore();
   }
   selectedCat = name;
   input.value = "";
@@ -406,7 +457,7 @@ function addNewCategory(){
 
 function save(){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
-  triggerBackup();
+  pushToFirestore();
 }
 
 function fmt(n){
@@ -425,6 +476,18 @@ function monthLabel(key){
 }
 
 let selectedMonth = monthKey(todayStr);
+let searchQuery = "";
+let filterCategory = "";
+let editingId = null;
+
+document.getElementById("searchInput").addEventListener("input", (e) => {
+  searchQuery = e.target.value.trim().toLowerCase();
+  render();
+});
+document.getElementById("filterCategory").addEventListener("change", (e) => {
+  filterCategory = e.target.value;
+  render();
+});
 
 function getMonthList(){
   const set = new Set(expenses.map(e => monthKey(e.date)));
@@ -481,9 +544,20 @@ function render(){
 
   const listWrap = document.getElementById("expenseList");
   listWrap.innerHTML = "";
-  const sorted = [...monthExpenses].sort((a,b) => (b.date+b.id) > (a.date+a.id) ? 1 : -1).slice(0,30);
+  const filteredExpenses = monthExpenses.filter(e => {
+    const matchesCat = !filterCategory || e.category === filterCategory;
+    const matchesSearch = !searchQuery ||
+      e.category.toLowerCase().includes(searchQuery) ||
+      (e.note && e.note.toLowerCase().includes(searchQuery)) ||
+      String(e.amount).includes(searchQuery) ||
+      e.date.includes(searchQuery);
+    return matchesCat && matchesSearch;
+  });
+  const sorted = [...filteredExpenses].sort((a,b) => (b.date+b.id) > (a.date+a.id) ? 1 : -1).slice(0,30);
   if(sorted.length === 0){
-    listWrap.innerHTML = '<div class="empty">No expenses recorded for this month yet</div>';
+    listWrap.innerHTML = (searchQuery || filterCategory)
+      ? '<div class="empty">No matching expenses found</div>'
+      : '<div class="empty">No expenses recorded for this month yet</div>';
   } else {
     sorted.forEach(e => {
       const item = document.createElement("div");
@@ -491,10 +565,11 @@ function render(){
       item.innerHTML = `
         <div class="left">
           <span class="cat">${catEmoji(e.category)}${e.category}</span>
-          <span class="date">${e.date}${e.note ? " · " + e.note : ""}</span>
+          <span class="date">${e.date}${e.time ? " · " + e.time : ""}${e.note ? " · " + e.note : ""}</span>
         </div>
         <div class="right">
           <span class="amt">EGP ${fmt(e.amount)}</span>
+          <button class="edit-btn" data-id="${e.id}">✎</button>
           <button class="del-btn" data-id="${e.id}">✕</button>
         </div>
       `;
@@ -503,13 +578,45 @@ function render(){
     listWrap.querySelectorAll(".del-btn").forEach(btn => {
       btn.onclick = () => {
         expenses = expenses.filter(e => e.id !== btn.dataset.id);
+        if (editingId === btn.dataset.id) cancelEdit();
         save();
         renderMonthTabs();
         render();
       };
     });
+    listWrap.querySelectorAll(".edit-btn").forEach(btn => {
+      btn.onclick = () => startEditExpense(btn.dataset.id);
+    });
   }
 }
+
+function startEditExpense(id){
+  const exp = expenses.find(e => e.id === id);
+  if (!exp) return;
+  editingId = id;
+  document.getElementById("amount").value = exp.amount;
+  document.getElementById("date").value = exp.date;
+  document.getElementById("note").value = exp.note || "";
+  selectedCat = exp.category;
+  renderCatButtons();
+  document.querySelector(".submit").textContent = "💾 Update Expense";
+  document.getElementById("cancelEditBtn").style.display = "block";
+  document.getElementById("expenseForm").scrollIntoView({ behavior: "smooth", block: "start" });
+  document.getElementById("amount").focus();
+}
+
+function cancelEdit(){
+  editingId = null;
+  document.getElementById("amount").value = "";
+  document.getElementById("note").value = "";
+  dateInput.value = todayStr;
+  selectedCat = CATEGORIES[0];
+  renderCatButtons();
+  document.querySelector(".submit").textContent = "➕ Add Expense";
+  document.getElementById("cancelEditBtn").style.display = "none";
+}
+
+document.getElementById("cancelEditBtn").addEventListener("click", cancelEdit);
 
 document.getElementById("expenseForm").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -518,13 +625,31 @@ document.getElementById("expenseForm").addEventListener("submit", (e) => {
   const note = document.getElementById("note").value.trim();
   if(!amount || Number(amount) <= 0) return;
 
-  expenses.push({
-    id: Date.now().toString() + Math.random().toString(36).slice(2,6),
-    amount: Number(amount),
-    category: selectedCat,
-    date: date,
-    note: note
-  });
+  if (editingId) {
+    const idx = expenses.findIndex(e => e.id === editingId);
+    if (idx !== -1) {
+      expenses[idx] = {
+        ...expenses[idx],
+        amount: Number(amount),
+        category: selectedCat,
+        date: date,
+        note: note
+      };
+    }
+    editingId = null;
+    document.querySelector(".submit").textContent = "➕ Add Expense";
+    document.getElementById("cancelEditBtn").style.display = "none";
+  } else {
+    expenses.push({
+      id: Date.now().toString() + Math.random().toString(36).slice(2,6),
+      amount: Number(amount),
+      category: selectedCat,
+      date: date,
+      time: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
+      note: note
+    });
+  }
+
   save();
   renderMonthTabs();
   render();
@@ -554,153 +679,69 @@ if ("serviceWorker" in navigator) {
   });
 }
 
-// ====== Google Drive Backup ======
-const GOOGLE_CLIENT_ID = "931654449000-44b3jrfvpdvlpbcsah0sj0alggkourbg.apps.googleusercontent.com";
-const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
-const BACKUP_FILENAME = "masarify_backup.json";
+// ====== Firebase Auth + Firestore Sync ======
+// Paste your Firebase project config here (from Firebase Console > Project settings > Your apps)
+const firebaseConfig = {
+  apiKey: "AIzaSyAD7uvH4cJ6OD906XUBUvP47_y7dAjW66s",
+  authDomain: "masareefy-fb5bf.firebaseapp.com",
+  projectId: "masareefy-fb5bf",
+  storageBucket: "masareefy-fb5bf.firebasestorage.app",
+  messagingSenderId: "919723170753",
+  appId: "1:919723170753:web:c594d85e0e535571b86d40"
+};
 
-let driveAccessToken = null;
-let driveFileId = localStorage.getItem("drive_file_id") || null;
-let tokenClient = null;
-let driveConnected = localStorage.getItem("drive_connected") === "1";
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+const googleProvider = new firebase.auth.GoogleAuthProvider();
 
-function setDriveStatus(connected, text){
-  const dot = document.getElementById("driveDot");
-  const txt = document.getElementById("driveStatusText");
-  const btn = document.getElementById("driveBtn");
-  const restoreBtn = document.getElementById("restoreBtn");
+let currentUser = null;
+let unsubscribeSnapshot = null;
+let syncing = false;
+
+function setSyncStatus(connected, text){
+  const dot = document.getElementById("syncDot");
+  const txt = document.getElementById("syncStatusText");
   dot.classList.toggle("on", connected);
-  txt.textContent = text || (connected ? "Connected to Google Drive" : "Not connected to Google Drive");
-  btn.textContent = connected ? "Connected ✓" : "Connect Drive";
-  btn.classList.toggle("connected", connected);
-  restoreBtn.style.display = connected ? "inline-block" : "none";
+  txt.textContent = text || (connected ? "Signed in" : "Not signed in");
 }
 
-function initGoogleDrive(){
-  if (typeof google === "undefined" || !google.accounts) {
-    setTimeout(initGoogleDrive, 400);
-    return;
-  }
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID,
-    scope: DRIVE_SCOPE,
-    callback: (resp) => {
-      if (resp && resp.access_token) {
-        driveAccessToken = resp.access_token;
-        driveConnected = true;
-        localStorage.setItem("drive_connected", "1");
-        setDriveStatus(true);
-        backupToDrive();
-      }
-    },
+document.getElementById("signInBtn").addEventListener("click", () => {
+  auth.signInWithPopup(googleProvider).catch(() => {
+    setSyncStatus(false, "Sign-in failed, please try again");
   });
-  setDriveStatus(driveConnected, driveConnected ? "Connected to Google Drive" : "Not connected to Google Drive");
-}
-
-document.getElementById("driveBtn").addEventListener("click", () => {
-  if (!tokenClient) return;
-  tokenClient.requestAccessToken({ prompt: driveConnected ? "none" : "consent" });
 });
 
-async function findExistingBackupFile(){
-  const res = await fetch(
-    "https://www.googleapis.com/drive/v3/files?q=" +
-      encodeURIComponent(`name='${BACKUP_FILENAME}' and trashed=false`) +
-      "&spaces=drive&fields=files(id,name)",
-    { headers: { Authorization: "Bearer " + driveAccessToken } }
-  );
-  const data = await res.json();
-  if (data.files && data.files.length > 0) {
-    driveFileId = data.files[0].id;
-    localStorage.setItem("drive_file_id", driveFileId);
-    return driveFileId;
+document.getElementById("signOutBtn").addEventListener("click", () => {
+  auth.signOut();
+});
+
+auth.onAuthStateChanged((user) => {
+  if (user) {
+    currentUser = user;
+    setSyncStatus(true, "Signed in as " + (user.email || user.displayName));
+    document.getElementById("signInBtn").style.display = "none";
+    document.getElementById("signOutBtn").style.display = "inline-block";
+    startFirestoreSync(user.uid);
+  } else {
+    currentUser = null;
+    setSyncStatus(false, "Not signed in");
+    document.getElementById("signInBtn").style.display = "inline-block";
+    document.getElementById("signOutBtn").style.display = "none";
+    if (unsubscribeSnapshot) { unsubscribeSnapshot(); unsubscribeSnapshot = null; }
   }
-  return null;
-}
+});
 
-function triggerBackup(){
-  if (driveAccessToken) { backupToDrive(); return; }
-  if (driveConnected && tokenClient) {
-    // silent refresh only happens here, inside a real user action (tap),
-    // so the browser won't flag it as a blocked pop-up
-    tokenClient.requestAccessToken({ prompt: "none" });
-  }
-}
+function startFirestoreSync(uid){
+  const docRef = db.collection("users").doc(uid);
 
-async function backupToDrive(){
-  if (!driveAccessToken || !driveConnected) return;
-  try {
-    if (!driveFileId) {
-      await findExistingBackupFile();
-    }
-
-    const content = JSON.stringify({ expenses, categories: CATEGORIES, exportedAt: new Date().toISOString() }, null, 2);
-    const metadata = { name: BACKUP_FILENAME, mimeType: "application/json" };
-
-    if (driveFileId) {
-      await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`, {
-        method: "PATCH",
-        headers: {
-          Authorization: "Bearer " + driveAccessToken,
-          "Content-Type": "application/json",
-        },
-        body: content,
-      });
-    } else {
-      const boundary = "masarify_boundary";
-      const body =
-        `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` +
-        JSON.stringify(metadata) +
-        `\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n` +
-        content +
-        `\r\n--${boundary}--`;
-
-      const res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + driveAccessToken,
-          "Content-Type": `multipart/related; boundary=${boundary}`,
-        },
-        body,
-      });
-      const data = await res.json();
-      if (data.id) {
-        driveFileId = data.id;
-        localStorage.setItem("drive_file_id", driveFileId);
+  docRef.get().then((snap) => {
+    if (snap.exists) {
+      const data = snap.data();
+      if (Array.isArray(data.expenses)) {
+        expenses = data.expenses;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
       }
-    }
-    setDriveStatus(true, "Last backup: " + new Date().toLocaleTimeString("en-US"));
-  } catch (err) {
-    setDriveStatus(true, "Backup failed, will retry later");
-  }
-}
-
-window.addEventListener("load", initGoogleDrive);
-
-async function restoreFromDrive(){
-  if (!driveAccessToken) {
-    alert("You need to connect to Drive first.");
-    return;
-  }
-  if (!confirm("This will replace all expenses on this device with the backup saved on Drive. Are you sure?")) {
-    return;
-  }
-  try {
-    if (!driveFileId) {
-      await findExistingBackupFile();
-    }
-    if (!driveFileId) {
-      alert("No backup found on Drive yet.");
-      return;
-    }
-    const res = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
-      { headers: { Authorization: "Bearer " + driveAccessToken } }
-    );
-    const data = await res.json();
-    if (Array.isArray(data.expenses)) {
-      expenses = data.expenses;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
       if (Array.isArray(data.categories) && data.categories.length > 0) {
         CATEGORIES = data.categories;
         saveCategories();
@@ -708,16 +749,51 @@ async function restoreFromDrive(){
       renderCatButtons();
       renderMonthTabs();
       render();
-      alert("Restored successfully ✅");
     } else {
-      alert("The file on Drive isn't in the expected format.");
+      // first time this account signs in: push whatever is on this device up
+      pushToFirestore();
     }
-  } catch (err) {
-    alert("Something went wrong while restoring. Please try again.");
-  }
+
+    if (unsubscribeSnapshot) unsubscribeSnapshot();
+    unsubscribeSnapshot = docRef.onSnapshot((snap) => {
+      if (!snap.exists || syncing) return;
+      const data = snap.data();
+      const incomingExpenses = JSON.stringify(data.expenses || []);
+      const incomingCategories = JSON.stringify(data.categories || []);
+      if (incomingExpenses !== JSON.stringify(expenses) || incomingCategories !== JSON.stringify(CATEGORIES)) {
+        if (Array.isArray(data.expenses)) {
+          expenses = data.expenses;
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
+        }
+        if (Array.isArray(data.categories) && data.categories.length > 0) {
+          CATEGORIES = data.categories;
+          saveCategories();
+        }
+        renderCatButtons();
+        renderMonthTabs();
+        render();
+      }
+      setSyncStatus(true, "Synced · " + new Date().toLocaleTimeString("en-US"));
+    });
+  });
 }
 
-document.getElementById("restoreBtn").addEventListener("click", restoreFromDrive);
+function pushToFirestore(){
+  if (!currentUser) return;
+  syncing = true;
+  db.collection("users").doc(currentUser.uid).set({
+    expenses,
+    categories: CATEGORIES,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge: true })
+    .then(() => {
+      setSyncStatus(true, "Synced · " + new Date().toLocaleTimeString("en-US"));
+    })
+    .catch(() => {
+      setSyncStatus(true, "Sync failed, will retry");
+    })
+    .finally(() => { syncing = false; });
+}
 </script>
 
 </body>
