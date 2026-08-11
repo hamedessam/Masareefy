@@ -123,6 +123,34 @@
   }
   .drive-btn.connected{color:var(--accent2);border-color:var(--accent2);}
 
+  .wallet-bar{
+    display:flex;
+    gap:8px;
+    margin-bottom:10px;
+    align-items:center;
+  }
+  .wallet-bar select{
+    flex:1;
+    background:var(--card);
+    border:1px solid var(--border);
+    color:var(--text);
+    padding:10px 12px;
+    border-radius:10px;
+    font-size:14px;
+    font-weight:700;
+  }
+  .wallet-bar button{
+    background:var(--card2);
+    border:1px solid var(--border);
+    color:var(--text);
+    padding:10px 14px;
+    border-radius:10px;
+    font-size:13px;
+    cursor:pointer;
+    white-space:nowrap;
+    flex-shrink:0;
+  }
+
   form{
     background:var(--card);
     border:1px solid var(--border);
@@ -167,6 +195,17 @@
     color:#fff;
     font-weight:700;
   }
+  .cat-btn{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+  }
+  .cat-del{
+    color:var(--muted);
+    font-size:11px;
+    opacity:0.6;
+  }
+  .cat-btn.active .cat-del{color:rgba(255,255,255,0.8);}
   .cat-btn.add-new{
     border-style:dashed;
     color:var(--muted);
@@ -291,6 +330,35 @@
     font-size:11px;
     padding:24px 16px 0;
   }
+
+  .modal-overlay{
+    position:fixed;
+    top:0; left:0; right:0; bottom:0;
+    background:rgba(0,0,0,0.6);
+    display:flex;
+    align-items:flex-end;
+    justify-content:center;
+    z-index:1000;
+    padding:0;
+  }
+  .modal-box{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:20px 20px 0 0;
+    padding:20px;
+    width:100%;
+    max-width:520px;
+    max-height:75vh;
+    overflow-y:auto;
+  }
+  .modal-box h3{
+    margin:0 0 14px;
+    font-size:15px;
+    font-weight:700;
+    color:var(--text);
+  }
+  .modal-box .cats{margin-bottom:14px;}
+  .modal-box .cat-btn{cursor:pointer;}
 </style>
 </head>
 <body>
@@ -310,6 +378,13 @@
 </div>
 
 <div class="container">
+
+  <div class="wallet-bar">
+    <select id="walletSelect"></select>
+    <button type="button" id="renameWalletBtn" title="Rename wallet">✎</button>
+    <button type="button" id="deleteWalletBtn" title="Delete wallet">🗑</button>
+    <button type="button" id="newWalletBtn">+ New</button>
+  </div>
 
   <div class="month-tabs" id="monthTabs"></div>
 
@@ -366,6 +441,14 @@
 
 </div>
 
+<div class="modal-overlay" id="mergeModal" style="display:none;">
+  <div class="modal-box">
+    <h3 id="mergeModalTitle">Move expenses to:</h3>
+    <div class="cats" id="mergeModalOptions"></div>
+    <button type="button" class="cancel-edit-btn" id="mergeModalCancel" style="display:block;">Cancel</button>
+  </div>
+</div>
+
 <footer>Masareefy · Made by Hamed Essam</footer>
 
 <script>
@@ -387,9 +470,121 @@ function catEmoji(name){
 }
 const STORAGE_KEY = "expenses_data_v1";
 const CATEGORIES_KEY = "categories_v1";
+const WALLETS_KEY = "wallets_v1";
+const CURRENT_WALLET_KEY = "current_wallet_id";
 
-let expenses = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-let CATEGORIES = JSON.parse(localStorage.getItem(CATEGORIES_KEY) || "null") || DEFAULT_CATEGORIES.slice();
+let wallets = {};
+let currentWalletId = null;
+let expenses = [];
+let CATEGORIES = [];
+
+function loadWallets(){
+  const raw = localStorage.getItem(WALLETS_KEY);
+  if (raw) {
+    wallets = JSON.parse(raw);
+  } else {
+    // migrate old single-wallet data into a "Personal" wallet
+    const oldExpenses = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    const oldCategories = JSON.parse(localStorage.getItem(CATEGORIES_KEY) || "null") || DEFAULT_CATEGORIES.slice();
+    wallets = { "default": { name: "Personal", expenses: oldExpenses, categories: oldCategories } };
+  }
+  currentWalletId = localStorage.getItem(CURRENT_WALLET_KEY);
+  if (!currentWalletId || !wallets[currentWalletId]) {
+    currentWalletId = Object.keys(wallets)[0];
+  }
+  expenses = wallets[currentWalletId].expenses;
+  CATEGORIES = wallets[currentWalletId].categories;
+}
+
+function persistWallets(){
+  wallets[currentWalletId].expenses = expenses;
+  wallets[currentWalletId].categories = CATEGORIES;
+  localStorage.setItem(WALLETS_KEY, JSON.stringify(wallets));
+  localStorage.setItem(CURRENT_WALLET_KEY, currentWalletId);
+}
+
+function renderWalletSelector(){
+  const sel = document.getElementById("walletSelect");
+  sel.innerHTML = "";
+  Object.keys(wallets).forEach(id => {
+    const opt = document.createElement("option");
+    opt.value = id;
+    opt.textContent = wallets[id].name;
+    if (id === currentWalletId) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function switchWallet(id){
+  if (!wallets[id]) return;
+  currentWalletId = id;
+  expenses = wallets[id].expenses;
+  CATEGORIES = wallets[id].categories;
+  localStorage.setItem(CURRENT_WALLET_KEY, currentWalletId);
+  selectedCat = CATEGORIES[0];
+  selectedMonth = monthKey(todayStr);
+  searchQuery = "";
+  filterCategory = "";
+  document.getElementById("searchInput").value = "";
+  editingId = null;
+  document.getElementById("amount").value = "";
+  document.getElementById("note").value = "";
+  dateInput.value = todayStr;
+  document.querySelector(".submit").textContent = "➕ Add Expense";
+  document.getElementById("cancelEditBtn").style.display = "none";
+  renderWalletSelector();
+  renderCatButtons();
+  renderMonthTabs();
+  render();
+}
+
+document.getElementById("walletSelect").addEventListener("change", (e) => {
+  switchWallet(e.target.value);
+});
+
+document.getElementById("newWalletBtn").addEventListener("click", () => {
+  const name = prompt("New wallet name:");
+  if (!name || !name.trim()) return;
+  persistWallets();
+  const id = "wallet_" + Date.now();
+  wallets[id] = { name: name.trim(), expenses: [], categories: DEFAULT_CATEGORIES.slice() };
+  switchWallet(id);
+  pushToFirestore();
+});
+
+document.getElementById("renameWalletBtn").addEventListener("click", () => {
+  const name = prompt("Rename wallet:", wallets[currentWalletId].name);
+  if (!name || !name.trim()) return;
+  wallets[currentWalletId].name = name.trim();
+  persistWallets();
+  renderWalletSelector();
+  pushToFirestore();
+});
+
+document.getElementById("deleteWalletBtn").addEventListener("click", () => {
+  if (Object.keys(wallets).length <= 1) {
+    alert("You need to keep at least one wallet.");
+    return;
+  }
+  const name = wallets[currentWalletId].name;
+  if (!confirm(`Delete wallet "${name}"? All its expenses and categories will be permanently deleted. This can't be undone.`)) {
+    return;
+  }
+  delete wallets[currentWalletId];
+  currentWalletId = Object.keys(wallets)[0];
+  expenses = wallets[currentWalletId].expenses;
+  CATEGORIES = wallets[currentWalletId].categories;
+  selectedCat = CATEGORIES[0];
+  selectedMonth = monthKey(todayStr);
+  persistWallets();
+  renderWalletSelector();
+  renderCatButtons();
+  renderMonthTabs();
+  render();
+  pushToFirestore();
+});
+
+loadWallets();
 let selectedCat = CATEGORIES[0];
 
 const dateInput = document.getElementById("date");
@@ -397,7 +592,7 @@ const todayStr = new Date().toISOString().slice(0,10);
 dateInput.value = todayStr;
 
 function saveCategories(){
-  localStorage.setItem(CATEGORIES_KEY, JSON.stringify(CATEGORIES));
+  persistWallets();
 }
 
 function renderCatButtons(){
@@ -406,8 +601,15 @@ function renderCatButtons(){
   CATEGORIES.forEach(cat => {
     const btn = document.createElement("div");
     btn.className = "cat-btn" + (cat === selectedCat ? " active" : "");
-    btn.textContent = catEmoji(cat) + cat;
-    btn.onclick = () => { selectedCat = cat; renderCatButtons(); };
+    const label = document.createElement("span");
+    label.textContent = catEmoji(cat) + cat;
+    label.onclick = () => { selectedCat = cat; renderCatButtons(); };
+    btn.appendChild(label);
+    const del = document.createElement("span");
+    del.className = "cat-del";
+    del.textContent = "✕";
+    del.onclick = (e) => { e.stopPropagation(); deleteCategory(cat); };
+    btn.appendChild(del);
     wrap.appendChild(btn);
   });
   const addBtn = document.createElement("div");
@@ -420,6 +622,57 @@ function renderCatButtons(){
   };
   wrap.appendChild(addBtn);
   renderFilterCategoryOptions();
+}
+
+function deleteCategory(name){
+  if (CATEGORIES.length <= 1) {
+    alert("You need to keep at least one category.");
+    return;
+  }
+  const affected = expenses.filter(e => e.category === name).length;
+  if (affected === 0) {
+    if (!confirm(`Delete "${name}"?`)) return;
+    finalizeDeleteCategory(name, null);
+    return;
+  }
+  openMergeModal(name, affected);
+}
+
+function openMergeModal(name, count){
+  document.getElementById("mergeModalTitle").textContent =
+    `Delete "${name}" — move its ${count} expense(s) to:`;
+  const optsWrap = document.getElementById("mergeModalOptions");
+  optsWrap.innerHTML = "";
+  CATEGORIES.filter(c => c !== name).forEach(c => {
+    const btn = document.createElement("div");
+    btn.className = "cat-btn";
+    btn.textContent = catEmoji(c) + c;
+    btn.onclick = () => {
+      finalizeDeleteCategory(name, c);
+      closeMergeModal();
+    };
+    optsWrap.appendChild(btn);
+  });
+  document.getElementById("mergeModal").style.display = "flex";
+}
+
+function closeMergeModal(){
+  document.getElementById("mergeModal").style.display = "none";
+}
+
+document.getElementById("mergeModalCancel").addEventListener("click", closeMergeModal);
+
+function finalizeDeleteCategory(name, mergeInto){
+  if (mergeInto) {
+    expenses.forEach(e => { if (e.category === name) e.category = mergeInto; });
+  }
+  CATEGORIES = CATEGORIES.filter(c => c !== name);
+  if (selectedCat === name) selectedCat = CATEGORIES[0];
+
+  save();
+  renderCatButtons();
+  renderMonthTabs();
+  render();
 }
 
 function renderFilterCategoryOptions(){
@@ -456,7 +709,7 @@ function addNewCategory(){
 }
 
 function save(){
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
+  persistWallets();
   pushToFirestore();
 }
 
@@ -565,7 +818,7 @@ function render(){
       item.innerHTML = `
         <div class="left">
           <span class="cat">${catEmoji(e.category)}${e.category}</span>
-          <span class="date">${e.date}${e.time ? " · " + e.time : ""}${e.note ? " · " + e.note : ""}</span>
+          <span class="date">${e.date}${(e.time && e.date === todayStr) ? " · " + e.time : ""}${e.note ? " · " + e.note : ""}</span>
         </div>
         <div class="right">
           <span class="amt">EGP ${fmt(e.amount)}</span>
@@ -645,7 +898,7 @@ document.getElementById("expenseForm").addEventListener("submit", (e) => {
       amount: Number(amount),
       category: selectedCat,
       date: date,
-      time: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
+      time: date === todayStr ? new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "",
       note: note
     });
   }
@@ -659,6 +912,7 @@ document.getElementById("expenseForm").addEventListener("submit", (e) => {
   document.getElementById("amount").focus();
 });
 
+renderWalletSelector();
 renderCatButtons();
 renderMonthTabs();
 render();
@@ -738,14 +992,14 @@ function startFirestoreSync(uid){
   docRef.get().then((snap) => {
     if (snap.exists) {
       const data = snap.data();
-      if (Array.isArray(data.expenses)) {
-        expenses = data.expenses;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
+      if (data.wallets && typeof data.wallets === "object" && Object.keys(data.wallets).length > 0) {
+        wallets = data.wallets;
+        if (!wallets[currentWalletId]) currentWalletId = Object.keys(wallets)[0];
+        expenses = wallets[currentWalletId].expenses || [];
+        CATEGORIES = wallets[currentWalletId].categories || DEFAULT_CATEGORIES.slice();
+        persistWallets();
       }
-      if (Array.isArray(data.categories) && data.categories.length > 0) {
-        CATEGORIES = data.categories;
-        saveCategories();
-      }
+      renderWalletSelector();
       renderCatButtons();
       renderMonthTabs();
       render();
@@ -758,17 +1012,15 @@ function startFirestoreSync(uid){
     unsubscribeSnapshot = docRef.onSnapshot((snap) => {
       if (!snap.exists || syncing) return;
       const data = snap.data();
-      const incomingExpenses = JSON.stringify(data.expenses || []);
-      const incomingCategories = JSON.stringify(data.categories || []);
-      if (incomingExpenses !== JSON.stringify(expenses) || incomingCategories !== JSON.stringify(CATEGORIES)) {
-        if (Array.isArray(data.expenses)) {
-          expenses = data.expenses;
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
-        }
-        if (Array.isArray(data.categories) && data.categories.length > 0) {
-          CATEGORIES = data.categories;
-          saveCategories();
-        }
+      if (!data.wallets) return;
+      const incoming = JSON.stringify(data.wallets);
+      if (incoming !== JSON.stringify(wallets)) {
+        wallets = data.wallets;
+        if (!wallets[currentWalletId]) currentWalletId = Object.keys(wallets)[0];
+        expenses = wallets[currentWalletId].expenses || [];
+        CATEGORIES = wallets[currentWalletId].categories || DEFAULT_CATEGORIES.slice();
+        persistWallets();
+        renderWalletSelector();
         renderCatButtons();
         renderMonthTabs();
         render();
@@ -780,10 +1032,10 @@ function startFirestoreSync(uid){
 
 function pushToFirestore(){
   if (!currentUser) return;
+  persistWallets();
   syncing = true;
   db.collection("users").doc(currentUser.uid).set({
-    expenses,
-    categories: CATEGORIES,
+    wallets,
     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
   }, { merge: true })
     .then(() => {
