@@ -998,6 +998,18 @@ function startFirestoreSync(uid){
         expenses = wallets[currentWalletId].expenses || [];
         CATEGORIES = wallets[currentWalletId].categories || DEFAULT_CATEGORIES.slice();
         persistWallets();
+      } else if (Array.isArray(data.expenses)) {
+        // old pre-wallets format on the server: migrate it into "Personal" and push it back up
+        currentWalletId = "default";
+        wallets[currentWalletId] = wallets[currentWalletId] || { name: "Personal", expenses: [], categories: DEFAULT_CATEGORIES.slice() };
+        wallets[currentWalletId].expenses = data.expenses;
+        if (Array.isArray(data.categories) && data.categories.length > 0) {
+          wallets[currentWalletId].categories = data.categories;
+        }
+        expenses = wallets[currentWalletId].expenses;
+        CATEGORIES = wallets[currentWalletId].categories;
+        persistWallets();
+        pushToFirestore();
       }
       renderWalletSelector();
       renderCatButtons();
