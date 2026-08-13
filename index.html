@@ -174,13 +174,40 @@
     font-family:inherit;
   }
   input:focus, select:focus{outline:none;border-color:var(--accent);}
-  .cats{
+
+  .type-toggle{
     display:flex;
-    flex-wrap:wrap;
+    gap:8px;
+    margin-bottom:2px;
+  }
+  .type-btn{
+    flex:1;
+    padding:10px;
+    border-radius:10px;
+    border:1px solid var(--border);
+    background:var(--card2);
+    color:var(--muted);
+    font-size:13px;
+    font-weight:700;
+    cursor:pointer;
+  }
+  .type-btn.active{
+    background:var(--accent);
+    border-color:var(--accent);
+    color:#fff;
+  }
+  .type-btn[data-type="refund"].active{
+    background:var(--accent2);
+    border-color:var(--accent2);
+    color:#0f1115;
+  }
+  .cats{
+    display:grid;
+    grid-template-columns:repeat(3, 1fr);
     gap:8px;
   }
   .cat-btn{
-    padding:9px 12px;
+    padding:9px 8px;
     border-radius:20px;
     border:1px solid var(--border);
     background:var(--card2);
@@ -188,6 +215,7 @@
     font-size:13px;
     cursor:pointer;
     user-select:none;
+    min-width:0;
   }
   .cat-btn.active{
     background:var(--accent);
@@ -196,14 +224,22 @@
     font-weight:700;
   }
   .cat-btn{
-    display:inline-flex;
+    display:flex;
     align-items:center;
-    gap:6px;
+    justify-content:center;
+    gap:5px;
+  }
+  .cat-label{
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    min-width:0;
   }
   .cat-del{
     color:var(--muted);
     font-size:11px;
     opacity:0.6;
+    flex-shrink:0;
   }
   .cat-btn.active .cat-del{color:rgba(255,255,255,0.8);}
   .cat-btn.add-new{
@@ -280,6 +316,18 @@
   .expense-item .note{font-size:12px;color:var(--muted);}
   .expense-item .right{display:flex;align-items:center;gap:10px;}
   .expense-item .amt{font-size:15px;font-weight:800;}
+  .expense-item .amt.refund{color:var(--accent2);}
+  .refund-tag{
+    display:inline-block;
+    background:rgba(46,204,156,0.15);
+    color:var(--accent2);
+    font-size:10px;
+    font-weight:700;
+    padding:2px 6px;
+    border-radius:8px;
+    margin-left:4px;
+    vertical-align:middle;
+  }
   .del-btn{
     background:none;
     border:none;
@@ -400,6 +448,10 @@
   </div>
 
   <form id="expenseForm">
+    <div class="type-toggle" id="typeToggle">
+      <button type="button" class="type-btn active" data-type="expense">💸 Expense</button>
+      <button type="button" class="type-btn" data-type="refund">↩️ Money Back</button>
+    </div>
     <div class="row">
       <div style="flex:1">
         <label>Amount (EGP)</label>
@@ -530,6 +582,7 @@ function switchWallet(id){
   document.getElementById("amount").value = "";
   document.getElementById("note").value = "";
   dateInput.value = todayStr;
+  resetTypeToggle();
   document.querySelector(".submit").textContent = "➕ Add Expense";
   document.getElementById("cancelEditBtn").style.display = "none";
   renderWalletSelector();
@@ -586,6 +639,19 @@ document.getElementById("deleteWalletBtn").addEventListener("click", () => {
 
 loadWallets();
 let selectedCat = CATEGORIES[0];
+let selectedType = "expense";
+
+document.querySelectorAll(".type-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    selectedType = btn.dataset.type;
+    document.querySelectorAll(".type-btn").forEach(b => b.classList.toggle("active", b === btn));
+  });
+});
+
+function resetTypeToggle(){
+  selectedType = "expense";
+  document.querySelectorAll(".type-btn").forEach(b => b.classList.toggle("active", b.dataset.type === "expense"));
+}
 
 const dateInput = document.getElementById("date");
 const todayStr = new Date().toISOString().slice(0,10);
@@ -602,6 +668,7 @@ function renderCatButtons(){
     const btn = document.createElement("div");
     btn.className = "cat-btn" + (cat === selectedCat ? " active" : "");
     const label = document.createElement("span");
+    label.className = "cat-label";
     label.textContent = catEmoji(cat) + cat;
     label.onclick = () => { selectedCat = cat; renderCatButtons(); };
     btn.appendChild(label);
@@ -815,13 +882,14 @@ function render(){
     sorted.forEach(e => {
       const item = document.createElement("div");
       item.className = "expense-item";
+      const isRefund = e.amount < 0;
       item.innerHTML = `
         <div class="left">
-          <span class="cat">${catEmoji(e.category)}${e.category}</span>
+          <span class="cat">${catEmoji(e.category)}${e.category}${isRefund ? ' <span class="refund-tag">↩ Money Back</span>' : ''}</span>
           <span class="date">${e.date}${(e.time && e.date === todayStr) ? " · " + e.time : ""}${e.note ? " · " + e.note : ""}</span>
         </div>
         <div class="right">
-          <span class="amt">EGP ${fmt(e.amount)}</span>
+          <span class="amt${isRefund ? ' refund' : ''}">${isRefund ? '-' : ''}EGP ${fmt(Math.abs(e.amount))}</span>
           <button class="edit-btn" data-id="${e.id}">✎</button>
           <button class="del-btn" data-id="${e.id}">✕</button>
         </div>
@@ -847,10 +915,12 @@ function startEditExpense(id){
   const exp = expenses.find(e => e.id === id);
   if (!exp) return;
   editingId = id;
-  document.getElementById("amount").value = exp.amount;
+  document.getElementById("amount").value = Math.abs(exp.amount);
   document.getElementById("date").value = exp.date;
   document.getElementById("note").value = exp.note || "";
   selectedCat = exp.category;
+  selectedType = exp.amount < 0 ? "refund" : "expense";
+  document.querySelectorAll(".type-btn").forEach(b => b.classList.toggle("active", b.dataset.type === selectedType));
   renderCatButtons();
   document.querySelector(".submit").textContent = "💾 Update Expense";
   document.getElementById("cancelEditBtn").style.display = "block";
@@ -864,6 +934,7 @@ function cancelEdit(){
   document.getElementById("note").value = "";
   dateInput.value = todayStr;
   selectedCat = CATEGORIES[0];
+  resetTypeToggle();
   renderCatButtons();
   document.querySelector(".submit").textContent = "➕ Add Expense";
   document.getElementById("cancelEditBtn").style.display = "none";
@@ -878,15 +949,18 @@ document.getElementById("expenseForm").addEventListener("submit", (e) => {
   const note = document.getElementById("note").value.trim();
   if(!amount || Number(amount) <= 0) return;
 
+  const signedAmount = selectedType === "refund" ? -Math.abs(Number(amount)) : Math.abs(Number(amount));
+
   if (editingId) {
     const idx = expenses.findIndex(e => e.id === editingId);
     if (idx !== -1) {
       expenses[idx] = {
         ...expenses[idx],
-        amount: Number(amount),
+        amount: signedAmount,
         category: selectedCat,
         date: date,
-        note: note
+        note: note,
+        type: selectedType
       };
     }
     editingId = null;
@@ -895,11 +969,12 @@ document.getElementById("expenseForm").addEventListener("submit", (e) => {
   } else {
     expenses.push({
       id: Date.now().toString() + Math.random().toString(36).slice(2,6),
-      amount: Number(amount),
+      amount: signedAmount,
       category: selectedCat,
       date: date,
       time: date === todayStr ? new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "",
-      note: note
+      note: note,
+      type: selectedType
     });
   }
 
@@ -909,6 +984,7 @@ document.getElementById("expenseForm").addEventListener("submit", (e) => {
 
   document.getElementById("amount").value = "";
   document.getElementById("note").value = "";
+  resetTypeToggle();
   document.getElementById("amount").focus();
 });
 
