@@ -653,8 +653,15 @@ function resetTypeToggle(){
   document.querySelectorAll(".type-btn").forEach(b => b.classList.toggle("active", b.dataset.type === "expense"));
 }
 
+function getLocalDateStr(d){
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 const dateInput = document.getElementById("date");
-const todayStr = new Date().toISOString().slice(0,10);
+const todayStr = getLocalDateStr(new Date());
 dateInput.value = todayStr;
 
 function saveCategories(){
