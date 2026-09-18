@@ -150,6 +150,13 @@
     white-space:nowrap;
     flex-shrink:0;
   }
+  #walletModeBtn{
+    white-space:normal;
+    text-align:center;
+    line-height:1.3;
+    font-size:12px;
+    color:var(--muted);
+  }
 
   form{
     background:var(--card);
@@ -432,6 +439,9 @@
     <button type="button" id="renameWalletBtn" title="Rename wallet">✎</button>
     <button type="button" id="deleteWalletBtn" title="Delete wallet">🗑</button>
     <button type="button" id="newWalletBtn">+ New</button>
+  </div>
+  <div class="wallet-bar">
+    <button type="button" id="walletModeBtn" style="flex:1;"></button>
   </div>
 
   <div class="month-tabs" id="monthTabs"></div>
@@ -822,8 +832,22 @@ function getMonthList(){
   return Array.from(set).sort((a,b) => b.localeCompare(a)); // newest first
 }
 
+function isMonthlyMode(){
+  return wallets[currentWalletId].monthlyMode !== false;
+}
+
 function renderMonthTabs(){
   const wrap = document.getElementById("monthTabs");
+  const modeBtn = document.getElementById("walletModeBtn");
+  const monthly = isMonthlyMode();
+  modeBtn.textContent = monthly ? "📅 Monthly tracking (tap to switch to one running total)" : "📋 One running total (tap to switch to monthly tracking)";
+
+  if (!monthly) {
+    wrap.style.display = "none";
+    wrap.innerHTML = "";
+    return;
+  }
+  wrap.style.display = "flex";
   wrap.innerHTML = "";
   const months = getMonthList();
   months.forEach(key => {
@@ -835,31 +859,48 @@ function renderMonthTabs(){
   });
 }
 
+document.getElementById("walletModeBtn").addEventListener("click", () => {
+  wallets[currentWalletId].monthlyMode = !isMonthlyMode();
+  if (isMonthlyMode()) {
+    selectedMonth = monthKey(todayStr);
+  }
+  persistWallets();
+  pushToFirestore();
+  renderMonthTabs();
+  render();
+});
+
 function render(){
-  // keep selectedMonth pointing at the real current month if the day rolled over
-  const realCurrentMonth = monthKey(todayStr);
-  if (!getMonthList().includes(selectedMonth)) {
-    selectedMonth = realCurrentMonth;
+  const monthly = isMonthlyMode();
+
+  if (monthly) {
+    // keep selectedMonth pointing at the real current month if the day rolled over
+    const realCurrentMonth = monthKey(todayStr);
+    if (!getMonthList().includes(selectedMonth)) {
+      selectedMonth = realCurrentMonth;
+    }
   }
 
-  const monthExpenses = expenses.filter(e => monthKey(e.date) === selectedMonth);
-  const monthTotal = monthExpenses.reduce((s,e)=>s+Number(e.amount),0);
+  const relevantExpenses = monthly
+    ? expenses.filter(e => monthKey(e.date) === selectedMonth)
+    : expenses.slice();
+  const totalAmount = relevantExpenses.reduce((s,e)=>s+Number(e.amount),0);
   const todayTotal = expenses.filter(e => e.date === todayStr)
                               .reduce((s,e)=>s+Number(e.amount),0);
 
-  document.getElementById("monthTotal").textContent = fmt(monthTotal);
+  document.getElementById("monthTotal").textContent = fmt(totalAmount);
   document.getElementById("todayTotal").textContent = fmt(todayTotal);
-  document.getElementById("monthLabel").textContent = monthLabel(selectedMonth) + " Total";
+  document.getElementById("monthLabel").textContent = monthly ? (monthLabel(selectedMonth) + " Total") : "Total";
 
   const byCat = {};
-  monthExpenses.forEach(e => {
+  relevantExpenses.forEach(e => {
     byCat[e.category] = (byCat[e.category]||0) + Number(e.amount);
   });
   const catWrap = document.getElementById("catBreakdown");
   catWrap.innerHTML = "";
   const sortedCats = Object.keys(byCat).sort((a,b)=>byCat[b]-byCat[a]);
   if(sortedCats.length === 0){
-    catWrap.innerHTML = '<div class="empty">No expenses recorded this month yet</div>';
+    catWrap.innerHTML = `<div class="empty">No expenses recorded ${monthly ? "this month" : "yet"}</div>`;
   } else {
     sortedCats.forEach(cat => {
       const row = document.createElement("div");
@@ -871,7 +912,7 @@ function render(){
 
   const listWrap = document.getElementById("expenseList");
   listWrap.innerHTML = "";
-  const filteredExpenses = monthExpenses.filter(e => {
+  const filteredExpenses = relevantExpenses.filter(e => {
     const matchesCat = !filterCategory || e.category === filterCategory;
     const matchesSearch = !searchQuery ||
       e.category.toLowerCase().includes(searchQuery) ||
@@ -884,7 +925,7 @@ function render(){
   if(sorted.length === 0){
     listWrap.innerHTML = (searchQuery || filterCategory)
       ? '<div class="empty">No matching expenses found</div>'
-      : '<div class="empty">No expenses recorded for this month yet</div>';
+      : `<div class="empty">No expenses recorded ${monthly ? "for this month" : "yet"}</div>`;
   } else {
     sorted.forEach(e => {
       const item = document.createElement("div");
