@@ -829,7 +829,7 @@ document.getElementById("filterCategory").addEventListener("change", (e) => {
 function getMonthList(){
   const set = new Set(expenses.map(e => monthKey(e.date)));
   set.add(monthKey(todayStr)); // always include current month, even with 0 expenses
-  return Array.from(set).sort((a,b) => b.localeCompare(a)); // newest first
+  return Array.from(set).sort((a,b) => a.localeCompare(b)); // oldest first, so current month lands rightmost
 }
 
 function isMonthlyMode(){
@@ -850,17 +850,27 @@ function renderMonthTabs(){
   wrap.style.display = "flex";
   wrap.innerHTML = "";
   const months = getMonthList();
+  let activeTab = null;
   months.forEach(key => {
     const tab = document.createElement("div");
     tab.className = "month-tab" + (key === selectedMonth ? " active" : "");
     tab.textContent = monthLabel(key);
     tab.onclick = () => { selectedMonth = key; renderMonthTabs(); render(); };
     wrap.appendChild(tab);
+    if (key === selectedMonth) activeTab = tab;
   });
+  if (activeTab) {
+    activeTab.scrollIntoView({ behavior: "auto", block: "nearest", inline: "nearest" });
+  }
 }
 
 document.getElementById("walletModeBtn").addEventListener("click", () => {
-  wallets[currentWalletId].monthlyMode = !isMonthlyMode();
+  const switchingTo = !isMonthlyMode();
+  const modeName = switchingTo ? "one running total (no monthly split)" : "monthly tracking (month tabs)";
+  if (!confirm(`Switch this wallet to ${modeName}?`)) return;
+  if (!confirm("Are you sure? This changes how totals and the expense list are grouped for this wallet.")) return;
+
+  wallets[currentWalletId].monthlyMode = switchingTo;
   if (isMonthlyMode()) {
     selectedMonth = monthKey(todayStr);
   }
