@@ -157,6 +157,31 @@
     font-size:12px;
     color:var(--muted);
   }
+  #setDefaultWalletBtn.is-default{
+    color:var(--accent2);
+    border-color:var(--accent2);
+  }
+
+  .quick-date-row{
+    display:flex;
+    gap:6px;
+    margin-top:6px;
+  }
+  .quick-date-btn{
+    flex:1;
+    background:var(--card2);
+    border:1px solid var(--border);
+    color:var(--muted);
+    padding:7px 6px;
+    border-radius:8px;
+    font-size:12px;
+    cursor:pointer;
+  }
+  .quick-date-btn:active{
+    background:var(--accent);
+    color:#fff;
+    border-color:var(--accent);
+  }
 
   form{
     background:var(--card);
@@ -436,6 +461,7 @@
 
   <div class="wallet-bar">
     <select id="walletSelect"></select>
+    <button type="button" id="setDefaultWalletBtn" title="Set as default wallet">☆ Default</button>
     <button type="button" id="renameWalletBtn" title="Rename wallet">✎</button>
     <button type="button" id="deleteWalletBtn" title="Delete wallet">🗑</button>
     <button type="button" id="newWalletBtn">+ New</button>
@@ -470,6 +496,10 @@
       <div style="flex:1">
         <label>Date</label>
         <input type="date" id="date" required>
+        <div class="quick-date-row">
+          <button type="button" class="quick-date-btn" id="todayBtn">Today</button>
+          <button type="button" class="quick-date-btn" id="yesterdayBtn">Yesterday</button>
+        </div>
       </div>
     </div>
 
@@ -534,6 +564,7 @@ const STORAGE_KEY = "expenses_data_v1";
 const CATEGORIES_KEY = "categories_v1";
 const WALLETS_KEY = "wallets_v1";
 const CURRENT_WALLET_KEY = "current_wallet_id";
+const DEFAULT_WALLET_KEY = "default_wallet_id";
 
 let wallets = {};
 let currentWalletId = null;
@@ -550,13 +581,36 @@ function loadWallets(){
     const oldCategories = JSON.parse(localStorage.getItem(CATEGORIES_KEY) || "null") || DEFAULT_CATEGORIES.slice();
     wallets = { "default": { name: "Personal", expenses: oldExpenses, categories: oldCategories } };
   }
-  currentWalletId = localStorage.getItem(CURRENT_WALLET_KEY);
-  if (!currentWalletId || !wallets[currentWalletId]) {
-    currentWalletId = Object.keys(wallets)[0];
+
+  const defaultId = localStorage.getItem(DEFAULT_WALLET_KEY);
+  if (defaultId && wallets[defaultId]) {
+    // a default wallet is pinned: always open on it, regardless of what was last open
+    currentWalletId = defaultId;
+  } else {
+    currentWalletId = localStorage.getItem(CURRENT_WALLET_KEY);
+    if (!currentWalletId || !wallets[currentWalletId]) {
+      currentWalletId = Object.keys(wallets)[0];
+    }
   }
   expenses = wallets[currentWalletId].expenses;
   CATEGORIES = wallets[currentWalletId].categories;
 }
+
+function isDefaultWallet(id){
+  return localStorage.getItem(DEFAULT_WALLET_KEY) === id;
+}
+
+function updateDefaultWalletBtn(){
+  const btn = document.getElementById("setDefaultWalletBtn");
+  const isDefault = isDefaultWallet(currentWalletId);
+  btn.textContent = isDefault ? "⭐ Default" : "☆ Default";
+  btn.classList.toggle("is-default", isDefault);
+}
+
+document.getElementById("setDefaultWalletBtn").addEventListener("click", () => {
+  localStorage.setItem(DEFAULT_WALLET_KEY, currentWalletId);
+  updateDefaultWalletBtn();
+});
 
 function persistWallets(){
   wallets[currentWalletId].expenses = expenses;
@@ -575,6 +629,7 @@ function renderWalletSelector(){
     if (id === currentWalletId) opt.selected = true;
     sel.appendChild(opt);
   });
+  updateDefaultWalletBtn();
 }
 
 function switchWallet(id){
@@ -673,6 +728,15 @@ function getLocalDateStr(d){
 const dateInput = document.getElementById("date");
 const todayStr = getLocalDateStr(new Date());
 dateInput.value = todayStr;
+
+document.getElementById("todayBtn").addEventListener("click", () => {
+  dateInput.value = todayStr;
+});
+document.getElementById("yesterdayBtn").addEventListener("click", () => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  dateInput.value = getLocalDateStr(d);
+});
 
 function saveCategories(){
   persistWallets();
