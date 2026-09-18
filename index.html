@@ -182,6 +182,12 @@
     color:#fff;
     border-color:var(--accent);
   }
+  .quick-date-btn.active{
+    background:var(--accent);
+    color:#fff;
+    border-color:var(--accent);
+    font-weight:700;
+  }
 
   form{
     background:var(--card);
@@ -647,6 +653,7 @@ function switchWallet(id){
   document.getElementById("amount").value = "";
   document.getElementById("note").value = "";
   dateInput.value = todayStr;
+  updateQuickDateButtons();
   resetTypeToggle();
   document.querySelector(".submit").textContent = "➕ Add Expense";
   document.getElementById("cancelEditBtn").style.display = "none";
@@ -727,16 +734,28 @@ function getLocalDateStr(d){
 
 const dateInput = document.getElementById("date");
 const todayStr = getLocalDateStr(new Date());
+const yesterdayStr = (() => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return getLocalDateStr(d);
+})();
 dateInput.value = todayStr;
+
+function updateQuickDateButtons(){
+  document.getElementById("todayBtn").classList.toggle("active", dateInput.value === todayStr);
+  document.getElementById("yesterdayBtn").classList.toggle("active", dateInput.value === yesterdayStr);
+}
 
 document.getElementById("todayBtn").addEventListener("click", () => {
   dateInput.value = todayStr;
+  updateQuickDateButtons();
 });
 document.getElementById("yesterdayBtn").addEventListener("click", () => {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  dateInput.value = getLocalDateStr(d);
+  dateInput.value = yesterdayStr;
+  updateQuickDateButtons();
 });
+dateInput.addEventListener("input", updateQuickDateButtons);
+updateQuickDateButtons();
 
 function saveCategories(){
   persistWallets();
@@ -1039,6 +1058,7 @@ function startEditExpense(id){
   editingId = id;
   document.getElementById("amount").value = Math.abs(exp.amount);
   document.getElementById("date").value = exp.date;
+  updateQuickDateButtons();
   document.getElementById("note").value = exp.note || "";
   selectedCat = exp.category;
   selectedType = exp.amount < 0 ? "refund" : "expense";
@@ -1055,6 +1075,7 @@ function cancelEdit(){
   document.getElementById("amount").value = "";
   document.getElementById("note").value = "";
   dateInput.value = todayStr;
+  updateQuickDateButtons();
   selectedCat = CATEGORIES[0];
   resetTypeToggle();
   renderCatButtons();
