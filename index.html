@@ -162,6 +162,31 @@
     border-color:var(--accent2);
   }
 
+  .budget-bar-wrap{
+    margin-top:14px;
+  }
+  .budget-bar-track{
+    width:100%;
+    height:8px;
+    background:rgba(255,255,255,0.12);
+    border-radius:999px;
+    overflow:hidden;
+  }
+  .budget-bar-fill{
+    height:100%;
+    border-radius:999px;
+    background:var(--accent2);
+    width:0%;
+    transition:width .3s ease;
+  }
+  .budget-bar-fill.over{background:var(--danger);}
+  .budget-bar-label{
+    margin-top:6px;
+    font-size:11px;
+    color:var(--muted);
+    text-align:center;
+  }
+
   .quick-date-row{
     display:flex;
     gap:6px;
@@ -200,6 +225,14 @@
     margin-bottom:18px;
   }
   .row{display:flex;gap:10px;}
+  .row > div{min-width:0;}
+  input[type="date"]{
+    width:100%;
+    min-width:0;
+    box-sizing:border-box;
+    -webkit-appearance:none;
+    appearance:none;
+  }
   label{font-size:12px;color:var(--muted);margin-bottom:4px;display:block;}
   input, select{
     width:100%;
@@ -366,6 +399,10 @@
     margin-left:4px;
     vertical-align:middle;
   }
+  .refund-tag.carryover-tag{
+    background:rgba(79,124,255,0.15);
+    color:var(--accent);
+  }
   .del-btn{
     background:none;
     border:none;
@@ -460,6 +497,10 @@
     <div class="val"><span id="monthTotal">0</span> <span class="unit">EGP</span></div>
     <div class="lbl" id="monthLabel">This Month</div>
     <div class="today-sub">Today: <span id="todayTotal">0</span> EGP</div>
+    <div class="budget-bar-wrap" id="budgetBarWrap" style="display:none;">
+      <div class="budget-bar-track"><div class="budget-bar-fill" id="budgetBarFill"></div></div>
+      <div class="budget-bar-label" id="budgetBarLabel"></div>
+    </div>
   </div>
 </div>
 
@@ -467,16 +508,28 @@
 
   <div class="wallet-bar">
     <select id="walletSelect"></select>
-    <button type="button" id="setDefaultWalletBtn" title="Set as default wallet">☆ Default</button>
+    <button type="button" id="setDefaultWalletBtn" title="Set as default wallet">☆</button>
     <button type="button" id="renameWalletBtn" title="Rename wallet">✎</button>
     <button type="button" id="deleteWalletBtn" title="Delete wallet">🗑</button>
-    <button type="button" id="newWalletBtn">+ New</button>
+    <button type="button" id="newWalletBtn" title="New wallet">+</button>
   </div>
   <div class="wallet-bar">
     <button type="button" id="walletModeBtn" style="flex:1;"></button>
+    <button type="button" id="budgetLimitBtn" style="flex:1;"></button>
+  </div>
+  <div class="wallet-bar" id="carryoverRow" style="display:none;">
+    <button type="button" id="carryoverBtn" style="flex:1;">↔️ Carry Over Budget</button>
   </div>
 
   <div class="month-tabs" id="monthTabs"></div>
+
+  <div class="modal-overlay" id="carryoverModal" style="display:none;">
+    <div class="modal-box">
+      <h3 id="carryoverModalTitle">Which month was over budget?</h3>
+      <div class="cats" id="carryoverModalOptions"></div>
+      <button type="button" class="cancel-edit-btn" id="carryoverModalCancel" style="display:block;">Cancel</button>
+    </div>
+  </div>
 
   <div class="drive-bar">
     <div class="status">
@@ -561,7 +614,8 @@ const CATEGORY_EMOJI = {
   "Padel": "🎾",
   "Gas": "⛽",
   "Other": "🗂️",
-  "Uncategorized": "❔"
+  "Uncategorized": "❔",
+  "Budget Adjustment": "⚖️"
 };
 function catEmoji(name){
   return CATEGORY_EMOJI[name] ? CATEGORY_EMOJI[name] + " " : "";
@@ -609,7 +663,7 @@ function isDefaultWallet(id){
 function updateDefaultWalletBtn(){
   const btn = document.getElementById("setDefaultWalletBtn");
   const isDefault = isDefaultWallet(currentWalletId);
-  btn.textContent = isDefault ? "⭐ Default" : "☆ Default";
+  btn.textContent = isDefault ? "⭐" : "☆";
   btn.classList.toggle("is-default", isDefault);
 }
 
@@ -924,6 +978,7 @@ function renderMonthTabs(){
   const modeBtn = document.getElementById("walletModeBtn");
   const monthly = isMonthlyMode();
   modeBtn.textContent = monthly ? "📅 Monthly tracking (tap to switch to one running total)" : "📋 One running total (tap to switch to monthly tracking)";
+  updateBudgetControls();
 
   if (!monthly) {
     wrap.style.display = "none";
@@ -963,6 +1018,126 @@ document.getElementById("walletModeBtn").addEventListener("click", () => {
   render();
 });
 
+// ====== Monthly budget limit + progress bar ======
+function getBudgetLimit(){
+  return wallets[currentWalletId].monthlyLimit || 0;
+}
+
+function updateBudgetControls(){
+  const limitBtn = document.getElementById("budgetLimitBtn");
+  const carryoverRow = document.getElementById("carryoverRow");
+  const limit = getBudgetLimit();
+  const monthly = isMonthlyMode();
+
+  limitBtn.style.display = monthly ? "block" : "none";
+  limitBtn.textContent = limit > 0
+    ? `🎯 Limit: ${fmt(limit)} EGP (tap to change)`
+    : "🎯 Set a monthly limit";
+
+  carryoverRow.style.display = (monthly && limit > 0) ? "flex" : "none";
+}
+
+document.getElementById("budgetLimitBtn").addEventListener("click", () => {
+  const current = getBudgetLimit();
+  const input = prompt("Monthly limit in EGP (enter 0 to remove it):", current > 0 ? current : "");
+  if (input === null) return;
+  const val = Number(input);
+  if (isNaN(val) || val < 0) { alert("Please enter a valid number."); return; }
+  wallets[currentWalletId].monthlyLimit = val;
+  persistWallets();
+  pushToFirestore();
+  updateBudgetControls();
+  render();
+});
+
+function renderBudgetBar(){
+  const wrap = document.getElementById("budgetBarWrap");
+  const limit = getBudgetLimit();
+  if (!isMonthlyMode() || !limit || limit <= 0) {
+    wrap.style.display = "none";
+    return;
+  }
+  const spent = expenses
+    .filter(e => monthKey(e.date) === selectedMonth)
+    .reduce((s, e) => s + Number(e.amount), 0);
+  const pct = Math.max(0, Math.min(100, (spent / limit) * 100));
+
+  wrap.style.display = "block";
+  const fill = document.getElementById("budgetBarFill");
+  fill.style.width = pct + "%";
+  fill.classList.toggle("over", spent > limit);
+  document.getElementById("budgetBarLabel").textContent =
+    `${fmt(spent)} / ${fmt(limit)} EGP (${Math.round((spent / limit) * 100)}%)`;
+}
+
+// ====== Manual budget carryover between months ======
+const CARRYOVER_CATEGORY = "Budget Adjustment";
+
+document.getElementById("carryoverBtn").addEventListener("click", () => {
+  const amountStr = prompt(`Amount to move FROM ${monthLabel(selectedMonth)} INTO an overspent month (EGP):`);
+  if (amountStr === null) return;
+  const amount = Number(amountStr);
+  if (isNaN(amount) || amount <= 0) { alert("Please enter a valid positive amount."); return; }
+  openCarryoverModal(amount);
+});
+
+function openCarryoverModal(amount){
+  document.getElementById("carryoverModalTitle").textContent =
+    `Move ${fmt(amount)} EGP from ${monthLabel(selectedMonth)} — which month was over budget?`;
+  const wrap = document.getElementById("carryoverModalOptions");
+  wrap.innerHTML = "";
+  const months = getMonthList().filter(m => m !== selectedMonth);
+  if (months.length === 0) {
+    wrap.innerHTML = '<div class="empty">No other months yet to carry over to.</div>';
+  } else {
+    months.forEach(m => {
+      const btn = document.createElement("div");
+      btn.className = "cat-btn";
+      btn.textContent = monthLabel(m);
+      btn.onclick = () => {
+        applyCarryover(amount, selectedMonth, m);
+        closeCarryoverModal();
+      };
+      wrap.appendChild(btn);
+    });
+  }
+  document.getElementById("carryoverModal").style.display = "flex";
+}
+
+function closeCarryoverModal(){
+  document.getElementById("carryoverModal").style.display = "none";
+}
+
+document.getElementById("carryoverModalCancel").addEventListener("click", closeCarryoverModal);
+
+function applyCarryover(amount, creditMonth, debitMonth){
+  if (!CATEGORIES.includes(CARRYOVER_CATEGORY)) {
+    CATEGORIES.push(CARRYOVER_CATEGORY);
+  }
+  const baseId = Date.now().toString() + Math.random().toString(36).slice(2,6);
+  expenses.push({
+    id: baseId + "a",
+    amount: amount,
+    category: CARRYOVER_CATEGORY,
+    date: creditMonth + "-01",
+    time: "",
+    note: `Carried over to cover ${monthLabel(debitMonth)}`,
+    type: "carryover"
+  });
+  expenses.push({
+    id: baseId + "b",
+    amount: -amount,
+    category: CARRYOVER_CATEGORY,
+    date: debitMonth + "-01",
+    time: "",
+    note: `Carried over from ${monthLabel(creditMonth)}`,
+    type: "carryover"
+  });
+  save();
+  renderMonthTabs();
+  render();
+}
+
 function render(){
   const monthly = isMonthlyMode();
 
@@ -973,6 +1148,8 @@ function render(){
       selectedMonth = realCurrentMonth;
     }
   }
+
+  renderBudgetBar();
 
   const relevantExpenses = monthly
     ? expenses.filter(e => monthKey(e.date) === selectedMonth)
@@ -1024,9 +1201,12 @@ function render(){
       const item = document.createElement("div");
       item.className = "expense-item";
       const isRefund = e.amount < 0;
+      const tag = e.type === "carryover"
+        ? '<span class="refund-tag carryover-tag">↔ Carryover</span>'
+        : (isRefund ? '<span class="refund-tag">↩ Money Back</span>' : '');
       item.innerHTML = `
         <div class="left">
-          <span class="cat">${catEmoji(e.category)}${e.category}${isRefund ? ' <span class="refund-tag">↩ Money Back</span>' : ''}</span>
+          <span class="cat">${catEmoji(e.category)}${e.category} ${tag}</span>
           <span class="date">${e.date}${(e.time && e.date === todayStr) ? " · " + e.time : ""}${e.note ? " · " + e.note : ""}</span>
         </div>
         <div class="right">
